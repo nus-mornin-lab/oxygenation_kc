@@ -14,7 +14,8 @@ SELECT
   pat.patientunitstayid AS icustay_id,
   SAFE_CAST(pat.age as numeric) AS age,
   pat.hospitaladmitoffset AS hospitaladmitoffset,
-  pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay
+  pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay,
+  pat.hospitalid AS hospital_id
 FROM pat
 WHERE pat.unitdischargeoffset > 0),
 
@@ -48,7 +49,8 @@ SELECT
   MAX(ps.icustay_id) AS icustay_id,
   MAX(ps.age) as age,
   MAX(ps.icu_length_of_stay) as icu_length_of_stay,
-  MAX(ventilation.max_fiO2) as max_fiO2
+  MAX(ventilation.max_fiO2) as max_fiO2,
+  ps.hospital_id AS hospital_id
   --CASE WHEN pat.hospitaladmitoffset = first_stay.first_icu_offset THEN 1 ELSE 0 END AS is_first_icu_stay
 FROM ps
 --INNER JOIN first_stay
