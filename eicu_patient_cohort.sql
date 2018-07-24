@@ -21,13 +21,15 @@ WHERE pat.unitdischargeoffset > 0),
 
 --TODO: Figure out how to choose only the first stays, there doesn't seem
 --      to be a simple way of determining this.
+--
+--      This method is wrong and will not select the first stay
 
-first_stay AS (
-SELECT
-  MAX(pat.hospitaladmitoffset) AS first_icu_offset,
-  pat.uniquepid AS subject_id
-FROM pat
-GROUP BY pat.uniquepid),
+--first_stay AS (
+--SELECT
+--  MAX(pat.hospitaladmitoffset) AS first_icu_offset,
+--  pat.uniquepid AS subject_id
+--FROM pat
+--GROUP BY pat.uniquepid),
 
 
 --TODO: Validate what O2 L/% is.
@@ -47,13 +49,10 @@ SELECT
   MAX(ps.age) as age,
   MAX(ps.icu_length_of_stay) as icu_length_of_stay,
   MAX(ventilation.max_fiO2) as max_fiO2
+  --CASE WHEN pat.hospitaladmitoffset = first_stay.first_icu_offset THEN 1 ELSE 0 END AS is_first_icu_stay
 FROM ps
-INNER JOIN first_stay
-  ON ps.subject_id = first_stay.subject_id
+--INNER JOIN first_stay
+--  ON ps.subject_id = first_stay.subject_id
 INNER JOIN ventilation
   ON ps.icustay_id = ventilation.icustay_id
-WHERE age >= 16
-AND icu_length_of_stay >= 3
-AND first_stay.first_icu_offset = ps.hospitaladmitoffset
-AND ventilation.max_fiO2 > 24
 GROUP BY ps.subject_id
