@@ -50,7 +50,7 @@ SELECT
   MAX(ps.age) as age,
   MAX(ps.icu_length_of_stay) as icu_length_of_stay,
   MAX(ventilation.max_fiO2) as max_fiO2,
-  ps.hospital_id AS hospital_id
+  MAX(ps.hospital_id) AS hospital_id
   --CASE WHEN pat.hospitaladmitoffset = first_stay.first_icu_offset THEN 1 ELSE 0 END AS is_first_icu_stay
 FROM ps
 --INNER JOIN first_stay
