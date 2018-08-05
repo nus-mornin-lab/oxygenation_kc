@@ -13,7 +13,7 @@ SELECT * FROM `oxygenators-209612.eicu.patient_cohort`)
 
 SELECT 
   pc.subject_id as patient_ID,
-  SAFE_CAST(chart.nursingchartvalue as float) as spO2_Value, 
+  SAFE_CAST(chart.nursingchartvalue as FLOAT64) as spO2_Value, 
   chart.nursingchartoffset / (24 * 60) as measurement_time      
 FROM pc
 INNER JOIN chart
