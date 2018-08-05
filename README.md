@@ -15,4 +15,4 @@ sudo apt-get update && sudo apt-get install google-cloud-sdk
 gcloud init
 
 
-Run the script sync_to_bq.sh to upload the current queries to the BigCloud server.
+Run the script sync_to_bq.sh in data-extraction to upload the current queries to the BigCloud server.
