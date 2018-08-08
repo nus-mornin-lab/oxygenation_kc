@@ -58,7 +58,7 @@ SELECT
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
   icd_presence.*
 FROM pc
-INNER JOIN pat
+OUTER JOIN pat
   ON pc.icustay_id = pat.patientunitstayid
-INNER JOIN icd_presence
+LEFT JOIN icd_presence
   ON pc.icustay_id = icd_presence.patientunitstayid
