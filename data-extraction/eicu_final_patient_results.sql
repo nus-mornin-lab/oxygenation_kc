@@ -53,6 +53,8 @@ SELECT
   pc.max_fiO2,
   pat.hospitalid,
   pat.unittype,
+  pat.patientHealthSystemStayID as hospital_stay_id
+  pat.unitVisitNumber as unit_stay_number, -- counter for ICU visits on same hospital stay
 --  pc.is_first_icu_stay,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
