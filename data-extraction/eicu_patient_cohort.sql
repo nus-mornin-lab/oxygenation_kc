@@ -16,8 +16,7 @@ SELECT
   pat.hospitaladmitoffset AS hospitaladmitoffset,
   pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay,
   pat.hospitalid AS hospital_id
-FROM pat
-WHERE pat.unitdischargeoffset > 0),
+FROM pat),
 
 
 --TODO: Figure out how to choose only the first stays, there doesn't seem
