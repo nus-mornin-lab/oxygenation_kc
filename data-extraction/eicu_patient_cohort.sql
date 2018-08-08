@@ -55,6 +55,6 @@ SELECT
 FROM ps
 --INNER JOIN first_stay
 --  ON ps.subject_id = first_stay.subject_id
-INNER JOIN ventilation
+LEFT JOIN ventilation
   ON ps.icustay_id = ventilation.icustay_id
 GROUP BY ps.subject_id
