@@ -47,8 +47,9 @@ GROUP BY icd_code.patientunitstayid)
 
 SELECT 
   pc.subject_id as patient_ID,
+  pc.icustay_id,
   pat.gender,
-  pc.age,  
+  pc.age,
   pc.icu_length_of_stay,
   pc.max_fiO2,
   pat.hospitalid,
