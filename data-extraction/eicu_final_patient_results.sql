@@ -47,18 +47,22 @@ GROUP BY icd_code.patientunitstayid)
 
 SELECT 
   pc.subject_id as patient_ID,
+  pc.icustay_id,
   pat.gender,
-  pc.age,  
+  pc.age,
   pc.icu_length_of_stay,
   pc.max_fiO2,
   pat.hospitalid,
   pat.unittype,
+  pat.patientHealthSystemStayID as hospital_stay_id
+  pat.unitVisitNumber as unit_stay_number, -- counter for ICU visits on same hospital stay
+  pat.hospitalAdmitYear
 --  pc.is_first_icu_stay,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
   icd_presence.*
 FROM pc
-INNER JOIN pat
+OUTER JOIN pat
   ON pc.icustay_id = pat.patientunitstayid
-INNER JOIN icd_presence
+LEFT JOIN icd_presence
   ON pc.icustay_id = icd_presence.patientunitstayid
