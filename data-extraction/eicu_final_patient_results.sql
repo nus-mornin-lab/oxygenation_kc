@@ -3,11 +3,23 @@ WITH
 pat AS (
 SELECT * FROM `oxygenators-209612.eicu.patient`),
 
-pc AS (
-SELECT * FROM `oxygenators-209612.eicu.patient_cohort`),
-
 diag AS (
 SELECT * FROM `oxygenators-209612.eicu.diagnosis`),
+
+chart AS (
+SELECT * FROM `oxygenators-209612.eicu.nursecharting`),
+
+
+--TODO: Validate what O2 L/% is.
+
+ventilation AS (
+SELECT
+  MAX(SAFE_CAST(chart.nursingchartvalue as FLOAT64)) AS max_fiO2,
+  chart.patientunitstayid AS icustay_id
+FROM chart
+WHERE chart.nursingchartcelltypevalname = "O2 L/%"
+GROUP BY chart.patientunitstayid)
+
 
 
 icd_code AS (
@@ -46,23 +58,23 @@ GROUP BY icd_code.patientunitstayid)
 
 
 SELECT 
-  pc.subject_id as patient_ID,
-  pc.icustay_id,
   pat.gender,
-  pc.age,
-  pc.icu_length_of_stay,
-  pc.max_fiO2,
-  pat.hospitalid,
+  ventilation.max_fiO2,
   pat.unittype,
   pat.patientHealthSystemStayID as hospital_stay_id
   pat.unitVisitNumber as unit_stay_number, -- counter for ICU visits on same hospital stay
   pat.hospitalAdmitYear
---  pc.is_first_icu_stay,
+  pat.uniquepid AS patient_ID,
+  pat.patientunitstayid AS icustay_id,
+  SAFE_CAST(REGEXP_EXTRACT(pat.age, r"[0-9]+") as FLOAT64) AS age,
+--  pat.hospitaladmitoffset AS hospitaladmitoffset,
+  pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay,
+  pat.hospitalid AS hospital_id,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
   icd_presence.*
-FROM pc
-OUTER JOIN pat
-  ON pc.icustay_id = pat.patientunitstayid
+FROM pat
 LEFT JOIN icd_presence
   ON pc.icustay_id = icd_presence.patientunitstayid
+LEFT JOIN ventilation
+  ON ps.icustay_id = ventilation.icustay_id
