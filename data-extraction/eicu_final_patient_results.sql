@@ -80,9 +80,9 @@ SELECT
   pat.gender,
   ventilation.max_fiO2,
   pat.unittype,
-  pat.patientHealthSystemStayID as hospital_stay_id
+  pat.patientHealthSystemStayID as hospital_stay_id,
   pat.unitVisitNumber as unit_stay_number, -- counter for ICU visits on same hospital stay
-  pat.hospitalAdmitYear
+  pat.hospitalDischargeYear, -- hospitalAdmitYear is missing in patient table
   pat.uniquepid AS patient_ID,
   pat.patientunitstayid AS icustay_id,
   SAFE_CAST(REGEXP_EXTRACT(pat.age, r"[0-9]+") as FLOAT64) AS age,
@@ -91,12 +91,12 @@ SELECT
   pat.hospitalid AS hospital_id,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
-  icd_presence.*
-  device.*
+  icd_presence.*, -- By using `*`, we select patientunitstayid twice
+  device.o2_device
 FROM pat
 LEFT JOIN icd_presence
-  ON pat.icustay_id = icd_presence.patientunitstayid
+  ON pat.patientunitstayid = icd_presence.patientunitstayid
 LEFT JOIN ventilation
-  ON pat.icustay_id = ventilation.icustay_id
+  ON pat.patientunitstayid = ventilation.icustay_id
 LEFT JOIN device
-  ON pat.icustay_id = device.icustay_id
+  ON pat.patientunitstayid = device.icustay_id
