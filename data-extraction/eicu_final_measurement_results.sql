@@ -1,7 +1,7 @@
 WITH 
 
 chart AS (
-SELECT * FROM `oxygenators-209612.eicu.nursecharting`),
+SELECT * FROM `oxygenators-209612.eicu.nursecharting`)
 
 
 SELECT 
