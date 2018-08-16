@@ -18,9 +18,28 @@ SELECT
   chart.patientunitstayid AS icustay_id
 FROM chart
 WHERE chart.nursingchartcelltypevalname = "O2 L/%"
-GROUP BY chart.patientunitstayid)
+GROUP BY chart.patientunitstayid),
 
-
+-- `device` is modified from
+-- https://github.com/MIT-LCP/eicu-code/blob/master/concepts/pivoted/pivoted-o2.sql
+device as
+(
+select
+    patientunitstayid AS icustay_id
+  , MAX(case
+    -- For now, I do MAX, but we should keep track of the ventilation more along the lines of
+    -- https://github.com/MIT-LCP/mimic-code/blob/master/concepts/durations/ventilation-durations.sql
+        WHEN nursingchartcelltypevallabel = 'O2 Admin Device'
+        -- AND in the next line *should* yield the same result, but out of caution we use OR.
+        OR  nursingchartcelltypevalname = 'O2 Admin Device'
+          then nursingchartvalue
+      else null end)
+    AS o2_device
+  from chart
+  -- speed up by only looking at a subset of charted data
+  where nursingchartcelltypecat = 'Vital Signs'
+  group by patientunitstayid
+),
 
 icd_code AS (
 SELECT
@@ -73,8 +92,11 @@ SELECT
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
   icd_presence.*
+  device.*
 FROM pat
 LEFT JOIN icd_presence
-  ON pc.icustay_id = icd_presence.patientunitstayid
+  ON pat.icustay_id = icd_presence.patientunitstayid
 LEFT JOIN ventilation
-  ON ps.icustay_id = ventilation.icustay_id
+  ON pat.icustay_id = ventilation.icustay_id
+LEFT JOIN device
+  ON pat.icustay_id = device.icustay_id
