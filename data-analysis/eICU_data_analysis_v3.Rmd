@@ -1,8 +1,9 @@
 ---
 title: Oxygen project using eICU data
 author: Willem van den Boom
-date: August 10, 2018
-output: github_document
+date: August 17, 2018
+output:
+  html_document: default
 editor_options:
   chunk_output_type: inline
 ---
@@ -49,13 +50,13 @@ SELECT * FROM eicu.final_measurement_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save(patient, O2measurement, file = "RData/eICU_data_analysis_v2_checkpoint1.RData")
+save(patient, O2measurement, file = "RData/eICU_data_analysis_v3_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/eICU_data_analysis_v1_checkpoint1")
+load("RData/eICU_data_analysis_v3_checkpoint1.RData")
 ```
 
 
@@ -106,6 +107,45 @@ levels(patient$unit_type)[levels(patient$unit_type) %in% c("CCU-CTICU", "CSICU",
 ```
 
 
+## Determine first stay
+
+We use `hospitalDischargeYear` and `unit_stay_number` to determine whether an ICU stay was a patient's first.
+```{r firstStay}
+patient$first_stay = NA
+patient$first_stay[patient$unit_stay_number > 1] <- FALSE
+
+tmp_table = table(patient$patient_ID[is.na(patient$first_stay)])
+
+# An ICU stay that is a patient's only one with `unit_stay_number` = 1
+# must be a first stay.
+patient$first_stay[
+  is.na(patient$first_stay) &
+  patient$patient_ID %in%
+  names(tmp_table)[tmp_table == 1]
+] <- TRUE
+
+# `hospitalDischargeYear` only takes the values 2014 and 2015
+unique(patient$hospitalDischargeYear)
+
+# The remaning NAs in first_stay can only be resolved if a patient
+# has only 1 hospital stay with a discharge in 2014
+tmp_IDs <- names(tmp_table[tmp_table > 1])
+
+for(id in tmp_IDs) {
+  tmp_index = which(
+    patient$patient_ID == id &
+    is.na(patient$first_stay) &
+    patient$hospitalDischargeYear == 2014
+  )
+  
+  if(length(tmp_index) == 1) patient$first_stay[tmp_index] <- TRUE
+}
+
+rm(tmp_table, tmp_IDs, tmp_index, id)
+
+summary(patient$first_stay)
+```
+
 
 # Oxygen measurements
 
@@ -114,60 +154,100 @@ We remove oxygen measurements that are outside of the range [10, 100]
 O2measurement <- O2measurement[O2measurement$spO2_Value <= 100 & O2measurement$spO2_Value >= 10,]
 ```
 
-Count the number of oxygen measurements per patient
+Count the number of oxygen measurements per ICU stay
+Since we only need these counts for the first ICU stay, we constrain ourselves to this subset for speed.
 ```{r countOxygen}
-tmp <- unique(O2measurement$patient_ID)
-tmp <- tmp[!(tmp %in% patient$patient_ID)]
-tmp <- table(O2measurement$patient_ID, exclude = tmp)
-patient$nOxy <- as.numeric(tmp[match(patient$patient_ID, names(tmp))])
-patient$nOxy[is.na(patient$nOxy)] <- 0
-mean(patient$nOxy >= 72)
+tmp <- unique(O2measurement$icustay_id)
+tmp <- tmp[!(tmp %in% patient$icustay_id[patient$first_stay])]
+tmp <- table(O2measurement$icustay_id, exclude = tmp)
+
+patient$nOxy <- as.numeric(tmp[match(patient$icustay_id, names(tmp))])
+rm(tmp)
+
+# ICU stays that do not have any measurements are currently NA and should be 0.
+patient$nOxy[which(is.na(patient$nOxy) & patient$first_stay)] <- 0
+
+mean(patient$nOxy[which(patient$first_stay)] >= 72)
 ```
 
 
 # Subset selection
 
 The following code selects cases of interest while also providing the info required for a flow diagram: That is, how many patients did not meet the inclusion criteria.
+
 ```{r}
-cat("Total number of patients:", nrow(patient))
+cat("Total number of ICU stays:", nrow(patient))
+
+# We only keep first stays
+tmp <- which(patient$first_stay)
+cat("\nNumber of first stays:", length(tmp))
+cat("\nNumber of patients for whom we couldn't determine first stays:", length(unique(patient$patient_ID[is.na(patient$first_stay)])))
+patient_subset <- patient[tmp,]
+
+
+
+cat("Number of selected patients so far:", nrow(patient_subset))
 
 # Ages above 89 are recorded as "> 89" in the eICU data
 # The current SQL code translates "> 89" to "89" such that we cannot distinguish between 89 and >89.
 # As we use age as a confounder, we remove those with age 89.
 # We only consider "adults" (age >= 16).
-tmp <- patient$age < 16 | patient$age == 89
-cat("\nPatients outside age range:", sum(tmp))
+tmp <- patient_subset$age < 16 | patient_subset$age == 89
+cat("\nPatients outside age range:", sum(tmp, na.rm = TRUE))
+cat("\nPatients with missing age:", sum(is.na(tmp)))
+tmp[is.na(tmp)] <- TRUE
 
 # `delete` records which cases to delete from patient
 delete <- tmp
 
-# Delete those with fewer than 72 oxygen measurements
-tmp <- patient$nOxy < 72
-cat("\nPatients with too few measurements:", sum(tmp))
-delete <- delete | tmp
-
 # Delete those whose gender is unknown or other
-tmp <- is.na(patient$gender)
+tmp <- is.na(patient_subset$gender)
 cat("\nPatients with missing or 'other' gender:", sum(tmp))
 delete <- delete | tmp
 
-patient_subset <- patient[!delete,]
+cat("\nPatients selected so far:", sum(!delete))
+
+
+# Delete those with fewer than 72 oxygen measurements
+tmp <- patient_subset$nOxy < 72
+cat("\nPatients with too few measurements:", sum(tmp), "out of", nrow(patient_subset))
+delete <- delete | tmp
+
+
+patient_subset <- patient_subset[!delete,]
 cat("\nPatients selected:", nrow(patient_subset))
+
+rm(delete)
 ```
 
 
 We only keep hospitals with at least 100 cases
 ```{r}
-cat("\n Number of hospitals in current subset:", length(unique(patient_subset$hospitalid)))
+cat("\n Number of hospitals in current subset:", length(unique(patient_subset$hospital_id)))
 
-tmp <- table(patient_subset$hospitalid)
+tmp <- table(patient_subset$hospital_id)
 cat("\n Number of hospitals with at least 100 patients:", sum(tmp >= 100))
 
-delete <- patient_subset$hospitalid %in% as.numeric(names(tmp[tmp < 100]))
+delete <- patient_subset$hospital_id %in% as.numeric(names(tmp[tmp < 100]))
 patient_subset <- patient_subset[!delete,]
-patient_subset$hospital_id = as.factor(patient_subset$hospitalid)
+patient_subset$hospital_id = as.factor(patient_subset$hospital_id)
 
 cat("\n Number of patients in selected subset:", nrow(patient_subset))
+```
+
+
+
+## Cleaning
+
+```{r}
+patient_subset$patientunitstayid <- NULL # Duplicates icustay_id
+
+# Cases with no diagnoses from ICD-9 codes have all diagnoses as "NA"
+# These should be FALSE.
+for(j in which(grepl("has_", names(patient_subset)))) {
+  patient_subset[is.na(patient_subset[,j]), j] <- FALSE
+}
+rm(j)
 ```
 
 
@@ -194,14 +274,14 @@ We do this after subset selection as it is much faster to compute these only for
 
 We currently ignore the time aspect of the measurements. However, one should probably take into account that certain measurements are less spread out than others.
 
-```{r oxygenSummaries, results='hide'}
+```{r oxygenSummaries, eval=FALSE}
 patient_subset$median <- NA
 patient_subset$prop <- NA
 n <- nrow(patient_subset)
 pb <- txtProgressBar(max = n, style = 3)
 
 for(i in 1:n) {
-  tmp <- O2measurement$spO2_Value[O2measurement$patient_ID == patient_subset$patient_ID[i]]
+  tmp <- O2measurement$spO2_Value[O2measurement$icustay_id == patient_subset$icustay_id[i]]
   
   patient_subset$median[i] <- median(tmp)
   patient_subset$prop[i] <- mean(tmp >= 94 & tmp <= 97)
@@ -209,13 +289,42 @@ for(i in 1:n) {
   setTxtProgressBar(pb, i)
 }
 close(pb)
+rm(i,tmp,pb)
 
 summary(patient_subset$median)
 summary(patient_subset$prop)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/eICU_data_analysis_v2_checkpoint2.RData")
+save.image("RData/eICU_data_analysis_v3_checkpoint2.RData")
+```
+
+```{r loadProcessedData, include=FALSE, eval=TRUE}
+# Since computing the oxygen summaries takes a long time,
+# I load the results from an RData file.
+load("RData/eICU_data_analysis_v3_checkpoint2.RData")
+```
+
+
+```{r include=FALSE, eval=FALSE}
+# Upload patient_subset to BigQuery to make it available outside of R
+
+# BigQuery does not seem to always know how to deal with NAs.
+# We therefore get rid of some of them before uploading.
+patient_subset_temp <- patient_subset
+patient_subset_temp$max_fiO2[is.na(patient_subset_temp$max_fiO2)] <- -99.9
+
+ds <- bq_table(project = project_id, dataset = "eicu", table = "patient_cohort")
+
+if(bq_table_exists(ds)) bq_table_delete(ds)
+
+bq_table_upload(
+  x = ds,
+  values = patient_subset_temp,
+  quiet = FALSE
+)
+
+rm(ds, patient_subset_temp)
 ```
 
 
