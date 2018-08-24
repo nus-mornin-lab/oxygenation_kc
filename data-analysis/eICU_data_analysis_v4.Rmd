@@ -50,13 +50,13 @@ SELECT * FROM eicu.final_measurement_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save(patient, O2measurement, file = "RData/eICU_data_analysis_v3_checkpoint1.RData")
+save(patient, O2measurement, file = "RData/eICU_data_analysis_v4_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/eICU_data_analysis_v3_checkpoint1.RData")
+load("RData/eICU_data_analysis_v4_checkpoint1.RData")
 ```
 
 
@@ -110,38 +110,55 @@ levels(patient$unit_type)[levels(patient$unit_type) %in% c("CCU-CTICU", "CSICU",
 ## Determine first stay
 
 We use `hospitalDischargeYear` and `unit_stay_number` to determine whether an ICU stay was a patient's first.
+
+Note that `unit_stay_number` [does not always start at 1](https://github.com/MIT-LCP/eicu-code/issues/16).
 ```{r firstStay}
 patient$first_stay = NA
-patient$first_stay[patient$unit_stay_number > 1] <- FALSE
 
-tmp_table = table(patient$patient_ID[is.na(patient$first_stay)])
+for(i in 1:max(patient$unit_stay_number)) {
+  tmp_table = table(patient$patient_ID[
+    patient$unit_stay_number <= i
+    & is.na(patient$first_stay)
+  ])
+  
+  # An ICU stay that is a patient's only one with `unit_stay_number` <= i
+  # must be a first stay.
+  tmp_index <- patient$patient_ID %in% names(tmp_table)[tmp_table == 1]
+  
+  patient$first_stay[
+     tmp_index
+  ] <- FALSE
+  
+  patient$first_stay[
+    tmp_index
+    & patient$unit_stay_number <= i
+  ] <- TRUE
+}
 
-# An ICU stay that is a patient's only one with `unit_stay_number` = 1
-# must be a first stay.
-patient$first_stay[
-  is.na(patient$first_stay) &
-  patient$patient_ID %in%
-  names(tmp_table)[tmp_table == 1]
-] <- TRUE
 
 # `hospitalDischargeYear` only takes the values 2014 and 2015
 unique(patient$hospitalDischargeYear)
 
 # The remaning NAs in first_stay can only be resolved if a patient
 # has only 1 hospital stay with a discharge in 2014
-tmp_IDs <- names(tmp_table[tmp_table > 1])
+tmp_IDs <- unique(patient$patient_ID[
+  is.na(patient$first_stay)
+  & patient$hospitalDischargeYear == 2014
+])
 
 for(id in tmp_IDs) {
-  tmp_index = which(
+  tmp_index <- which(
     patient$patient_ID == id &
-    is.na(patient$first_stay) &
     patient$hospitalDischargeYear == 2014
   )
   
-  if(length(tmp_index) == 1) patient$first_stay[tmp_index] <- TRUE
+  if(length(tmp_index) == 1) {
+    patient$first_stay[patient$patient_ID == id] <- FALSE
+    patient$first_stay[tmp_index] <- TRUE
+  }
 }
 
-rm(tmp_table, tmp_IDs, tmp_index, id)
+rm(tmp_table, tmp_index, tmp_IDs, i, id)
 
 summary(patient$first_stay)
 ```
@@ -233,6 +250,8 @@ patient_subset <- patient_subset[!delete,]
 patient_subset$hospital_id = as.factor(patient_subset$hospital_id)
 
 cat("\n Number of patients in selected subset:", nrow(patient_subset))
+
+rm(tmp, delete)
 ```
 
 
@@ -296,13 +315,13 @@ summary(patient_subset$prop)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/eICU_data_analysis_v3_checkpoint2.RData")
+save.image("RData/eICU_data_analysis_v4_checkpoint2.RData")
 ```
 
 ```{r loadProcessedData, include=FALSE, eval=TRUE}
 # Since computing the oxygen summaries takes a long time,
 # I load the results from an RData file.
-load("RData/eICU_data_analysis_v3_checkpoint2.RData")
+load("RData/eICU_data_analysis_v4_checkpoint2.RData")
 ```
 
 
