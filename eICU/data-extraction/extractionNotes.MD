@@ -9,7 +9,7 @@ This file aims to fullfill a similar function as [this Google doc](https://docs.
 Source table | Variables of interest | Remarks
 --- | --- | ---
 nursecharting | nursingChartValue<br>nursingchartcelltypevallabel | Whenever `nursingchartcelltypevallabel = 'O2 L/%'`, `nursingChartValue` gives the oxygen flow, whose existence indicates that the patient is under oxygen therapy.<br>Whenever `nursingchartcelltypevallabel = 'O2 Admin Device'`, `nursingChartValue` gives the oxygen administration device.
-respiratorycare | 		ventstartoffset, ventendoffset |  Start and end times of ventilation, but end times are [currently not transcoded correctly from the raw ICU data](https://github.com/MIT-LCP/eicu-code/issues/49)
+respiratorycare | 		ventstartoffset, ventendoffset |  Start and end times of ventilation, but they are [currently not transcoded correctly from the raw ICU data](https://github.com/MIT-LCP/eicu-code/issues/49)
 respiratorycharting | respchartvalue | Sometimes contains a string that indicates oxygen therapy.
 treatment | treatmentstring | Sometimes contains a string that indicates oxygen therapy.
 
