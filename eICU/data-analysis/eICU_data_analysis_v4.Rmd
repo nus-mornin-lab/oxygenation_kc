@@ -1,7 +1,7 @@
 ---
 title: Oxygen project using eICU data
 author: Willem van den Boom
-date: August 17, 2018
+date: October 6, 2018
 output:
   html_document: default
 editor_options:
@@ -161,7 +161,169 @@ for(id in tmp_IDs) {
 rm(tmp_table, tmp_index, tmp_IDs, i, id)
 
 summary(patient$first_stay)
+length(unique(patient$patient_ID))
+length(unique(patient$patient_ID[is.na(patient$first_stay)]))
 ```
+
+
+
+
+# Ventilation times
+
+We determine the ventilation times based on a variety of data tables.
+We do not use `respiratorycare` since it time stamps [are not recorded correctly](https://github.com/MIT-LCP/eicu-code/issues/49).
+
+In `nursecharting`, we look at the presence of a positive oxygen flow or oxygen admin devices that indicate oxygen therapy.
+We are only interested in positive oxygen flows. Also, we ignore what happens more than an hour in advance of ICU admission.
+```{r loadO2flowData, eval=FALSE}
+vent_times <- run_query("
+SELECT DISTINCT
+    patientunitstayid as icustay_id,
+		nursingChartOffset as time
+		FROM `oxygenators-209612.eicu.nursecharting`
+    WHERE (  ( nursingchartcelltypevallabel = 'O2 L/%'
+    AND SAFE_CAST(nursingChartValue AS INT64) > 0
+    AND SAFE_CAST(nursingChartValue AS INT64) <= 100
+    ) OR (
+			nursingchartcelltypevallabel = 'O2 Admin Device'
+		AND LOWER(nursingchartvalue) IN (
+			-- This list is not exhaustive. It is a classification by Willem of the most common O2 devices that indicate oxygen therapy. We should probably check it with KC See
+			'ventilator',
+'vent',
+'trach collar',
+'ett oral',
+'nasal cannula',
+'bipap/cpap',
+'trach collar',
+'nc',
+'venturi mask',
+'non-rebreather',
+'cool aerosol mask',
+'bipap',
+'oxymizer',
+'hfnc',
+'cpap',
+'oximizer',
+'high flow',
+'oxymask',
+'niv', -- noninvasive ventilation
+'face tent',
+'vented',
+'hi flow',
+'hiflow'
+		) ) )
+    AND nursingChartOffset > -60
+")
+```
+
+`respiratorycharting.respchartvaluelabel` sometimes indicates ventilation.
+```{r load_resp_chart, eval=FALSE}
+vent_times <- rbind(vent_times, run_query("
+SELECT DISTINCT patientunitstayid as icustay_id,
+					respchartoffset as time
+   FROM `oxygenators-209612.eicu.respiratorycharting`
+  WHERE respchartoffset >= 0 AND 
+( LOWER(respchartvaluelabel) LIKE '%ventilator%'
+     OR LOWER(respchartvaluelabel) LIKE '%vent%'
+     OR LOWER(respchartvaluelabel) LIKE '%bipap%'
+     OR LOWER(respchartvaluelabel) LIKE '%840%'
+     OR LOWER(respchartvaluelabel) LIKE '%cpap%'
+     OR LOWER(respchartvaluelabel) LIKE '%drager%'
+     OR LOWER(respchartvaluelabel) LIKE 'mv%'
+     OR LOWER(respchartvaluelabel) LIKE '%servo%'
+     OR LOWER(respchartvaluelabel) LIKE '%peep%' )
+"))
+```
+
+`treatment.treatmentstring` sometimes indicates ventilation.
+```{r load_treatment, eval=FALSE}
+treatment <- run_query("
+SELECT DISTINCT patientunitstayid as icustay_id,
+					treatmentoffset as time,
+          activeUponDischarge
+FROM `oxygenators-209612.eicu.treatment`
+WHERE treatmentstring IN ('pulmonary|ventilation and oxygenation|mechanical ventilation', 'pulmonary|ventilation and oxygenation|tracheal suctioning', 'pulmonary|ventilation and oxygenation|ventilator weaning', 'pulmonary|ventilation and oxygenation|mechanical ventilation|assist controlled', 'pulmonary|radiologic procedures / bronchoscopy|endotracheal tube', 'pulmonary|ventilation and oxygenation|oxygen therapy (> 60%)', 'pulmonary|ventilation and oxygenation|mechanical ventilation|tidal volume 6-10 ml/kg', 'pulmonary|ventilation and oxygenation|mechanical ventilation|volume controlled', 'surgery|pulmonary therapies|mechanical ventilation', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy', 'pulmonary|ventilation and oxygenation|mechanical ventilation|synchronized intermittent', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|performed during current admission for ventilatory support', 'pulmonary|ventilation and oxygenation|ventilator weaning|active', 'pulmonary|ventilation and oxygenation|mechanical ventilation|pressure controlled', 'pulmonary|ventilation and oxygenation|mechanical ventilation|pressure support', 'pulmonary|ventilation and oxygenation|ventilator weaning|slow', 'surgery|pulmonary therapies|ventilator weaning', 'surgery|pulmonary therapies|tracheal suctioning', 'pulmonary|radiologic procedures / bronchoscopy|reintubation', 'pulmonary|ventilation and oxygenation|lung recruitment maneuver', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|planned', 'surgery|pulmonary therapies|ventilator weaning|rapid', 'pulmonary|ventilation and oxygenation|prone position', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|conventional', 'pulmonary|ventilation and oxygenation|mechanical ventilation|permissive hypercapnea', 'surgery|pulmonary therapies|mechanical ventilation|synchronized intermittent', 'pulmonary|medications|neuromuscular blocking agent', 'surgery|pulmonary therapies|mechanical ventilation|assist controlled', 'pulmonary|ventilation and oxygenation|mechanical ventilation|volume assured', 'surgery|pulmonary therapies|mechanical ventilation|tidal volume 6-10 ml/kg', 'surgery|pulmonary therapies|mechanical ventilation|pressure support', 'pulmonary|ventilation and oxygenation|non-invasive ventilation', 'pulmonary|ventilation and oxygenation|non-invasive ventilation|face mask', 'pulmonary|ventilation and oxygenation|non-invasive ventilation|nasal mask', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation|face mask', 'surgery|pulmonary therapies|non-invasive ventilation', 'surgery|pulmonary therapies|non-invasive ventilation|face mask', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation|nasal mask', 'surgery|pulmonary therapies|non-invasive ventilation|nasal mask', 'surgery|pulmonary therapies|mechanical ventilation|non-invasive ventilation', 'surgery|pulmonary therapies|mechanical ventilation|non-invasive ventilation|face mask')
+")
+```
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent.RData")
+```
+
+Oxygen flows and respiratorycharting entries are usually recorded every 60 minutes and oxygen administration devices mostly in at most 2 hour intervals but we allow for gaps of up to 24*60 minutes.
+Treatment is recorded irregularly but mostly more often than every day (24*60 minutes). So, we also allow gaps there.
+```{r determineVentilation, eval=FALSE}
+tmp_IDs <- unique(patient$patientunitstayid[patient$first_stay & !is.na(patient$first_stay)])
+
+# We only keep entries in `vent_times` and `treatment` that appear in tmp_IDs for computational efficiency.
+vent_times <- vent_times[vent_times$icustay_id %in% tmp_IDs,]
+treatment <- treatment[treatment$icustay_id %in% tmp_IDs,]
+
+tmp_IDs <- unique(vent_times$icustay_id, treatment$icustay_id)
+n <- length(tmp_IDs)
+
+patient$vent_start <- NA_integer_
+patient$vent_end <- NA_integer_
+
+pb <- txtProgressBar(max = n, style = 3)
+for(i in 1:n) {
+  id <- tmp_IDs[i]
+  patient_ind <- which(patient$patientunitstayid == id)
+  
+  tmp_treatment <- treatment[treatment$icustay_id == id, -1]
+  times <- sort(c(vent_times$time[vent_times$icustay_id == id], tmp_treatment$time))
+  patient$vent_start[patient_ind] <- times[1]
+  
+  n_times <- length(times)
+  
+  breaks <- diff(times) > 60*24
+  
+  if(!any(breaks)) {
+    patient$vent_end[patient_ind] <- times[n_times]
+  } else {
+    patient$vent_end[patient_ind] <- times[which(breaks)[1]]
+  }
+  
+  if(any(tmp_treatment$activeUponDischarge)) {
+    last_treatment_time <- min(tmp_treatment$time[which(tmp_treatment$activeUponDischarge)])
+    if(last_treatment_time <= patient$vent_end[patient_ind])   {
+      patient$vent_end[patient_ind] <- max(
+        # The ventilation end time cannot be later/longer than the ICU length of stay
+        last_treatment_time,
+        24*60*patient$icu_length_of_stay[patient_ind]
+      )
+    }
+  }
+  
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+
+rm(tmp_IDs, n, id, times, n_times, breaks, i, pb, vent_times, treatment, last_treatment_time)
+
+# End time is currently a charting time
+# Since these are usually recorded hourly, ventilation is actually longer
+patient$vent_end <- patient$vent_end + 60
+```
+
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent2.RData")
+```
+
+```{r include=FALSE, eval=TRUE}
+load(file = "RData/eICU_data_analysis_v4_checkpoint_vent2.RData")
+```
+
+```{r}
+mean(is.na(patient$vent_start))
+mean(is.na(patient$vent_end))
+summary(patient$vent_end - patient$vent_start)
+mean(patient$vent_end - patient$vent_start >= 60*24, na.rm = TRUE)
+mean(patient$vent_end - patient$vent_start >= 60*24*2, na.rm = TRUE)
+mean(patient$vent_end - patient$vent_start >= 60*24*3, na.rm = TRUE)
+```
+
 
 
 # Oxygen measurements
@@ -171,20 +333,59 @@ We remove oxygen measurements that are outside of the range [10, 100]
 O2measurement <- O2measurement[O2measurement$spO2_Value <= 100 & O2measurement$spO2_Value >= 10,]
 ```
 
-Count the number of oxygen measurements per ICU stay
+Count the number of oxygen measurements per first ventilation of ICU stay
 Since we only need these counts for the first ICU stay, we constrain ourselves to this subset for speed.
-```{r countOxygen}
+We only count measurements that happen during the first ventilation, and we are only interested in ventilations of at least 48 hours.
+```{r countOxygen, include=TRUE, eval=FALSE}
+nOxy_limit <- 24
+
 tmp <- unique(O2measurement$icustay_id)
-tmp <- tmp[!(tmp %in% patient$icustay_id[patient$first_stay])]
+tmp <- tmp[!(tmp %in% patient$icustay_id[patient$first_stay & patient$vent_end - patient$vent_start >= 60*24*2])]
 tmp <- table(O2measurement$icustay_id, exclude = tmp)
 
 patient$nOxy <- as.numeric(tmp[match(patient$icustay_id, names(tmp))])
 rm(tmp)
 
 # ICU stays that do not have any measurements are currently NA and should be 0.
-patient$nOxy[which(is.na(patient$nOxy) & patient$first_stay)] <- 0
+patient$nOxy[which(is.na(patient$nOxy) & patient$vent_end - patient$vent_start >= 60*24*2)] <- 0
 
-mean(patient$nOxy[which(patient$first_stay)] >= 72)
+
+# We've counted all oxygen measurements.
+# We should only be counting the measurements that happen during ventilation
+tmp_IDs <- patient$icustay_id[which(patient$vent_end - patient$vent_start >= 60*24*2 & patient$nOxy >= nOxy_limit)]
+n <- length(tmp_IDs)
+
+# Delete O2measurements that belong to patients that won't be in the selected subset
+O2measurement <- O2measurement[O2measurement$icustay_id %in% tmp_IDs,]
+
+index <- match(tmp_IDs, patient$icustay_id)
+
+pb <- txtProgressBar(max = n, style = 3)
+for(i in 1:n) {
+  ind <- index[i]
+  
+  patient$nOxy[ind] <- sum(
+    O2measurement$icustay_id == tmp_IDs[i]
+    & O2measurement$measurement_time >= patient$vent_start[ind]
+    & O2measurement$measurement_time <= patient$vent_end[ind]
+  )
+  
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+rm(pb, i, index, tmp_IDs, n, ind)
+```
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent2_2.RData")
+```
+
+```{r include=FALSE, eval=TRUE}
+load(file = "RData/eICU_data_analysis_v4_checkpoint_vent2_2.RData")
+```
+
+```{r}
+mean(patient$nOxy[which(patient$vent_end - patient$vent_start >= 60*24*2)] >= nOxy_limit)
 ```
 
 
@@ -195,10 +396,12 @@ The following code selects cases of interest while also providing the info requi
 ```{r}
 cat("Total number of ICU stays:", nrow(patient))
 
-# We only keep first stays
+# We only keep first stays with at least 48 hours of ventilation
 tmp <- which(patient$first_stay)
 cat("\nNumber of first stays:", length(tmp))
 cat("\nNumber of patients for whom we couldn't determine first stays:", length(unique(patient$patient_ID[is.na(patient$first_stay)])))
+tmp <- which(patient$vent_end - patient$vent_start >= 60*24*2)
+cat("\nNumber of first ventilations of at least 48 hours:", length(tmp))
 patient_subset <- patient[tmp,]
 
 
@@ -225,8 +428,8 @@ delete <- delete | tmp
 cat("\nPatients selected so far:", sum(!delete))
 
 
-# Delete those with fewer than 72 oxygen measurements
-tmp <- patient_subset$nOxy < 72
+# Delete those with fewer than 24 oxygen measurements
+tmp <- patient_subset$nOxy < nOxy_limit
 cat("\nPatients with too few measurements:", sum(tmp), "out of", nrow(patient_subset))
 delete <- delete | tmp
 
@@ -238,20 +441,20 @@ rm(delete)
 ```
 
 
-We only keep hospitals with at least 100 cases
-```{r}
-cat("\n Number of hospitals in current subset:", length(unique(patient_subset$hospital_id)))
-
-tmp <- table(patient_subset$hospital_id)
-cat("\n Number of hospitals with at least 100 patients:", sum(tmp >= 100))
-
-delete <- patient_subset$hospital_id %in% as.numeric(names(tmp[tmp < 100]))
-patient_subset <- patient_subset[!delete,]
-patient_subset$hospital_id = as.factor(patient_subset$hospital_id)
-
-cat("\n Number of patients in selected subset:", nrow(patient_subset))
-
-rm(tmp, delete)
+```{r, include = FALSE, eval = FALSE}
+## We only keep hospitals with at least 100 cases
+# cat("\n Number of hospitals in current subset:", length(unique(patient_subset$hospital_id)))
+# 
+# tmp <- table(patient_subset$hospital_id)
+# cat("\n Number of hospitals with at least 100 patients:", sum(tmp >= 100))
+# 
+# delete <- patient_subset$hospital_id %in% as.numeric(names(tmp[tmp < 100]))
+# patient_subset <- patient_subset[!delete,]
+# patient_subset$hospital_id = as.factor(patient_subset$hospital_id)
+# 
+# cat("\n Number of patients in selected subset:", nrow(patient_subset))
+# 
+# rm(tmp, delete)
 ```
 
 
@@ -260,6 +463,9 @@ rm(tmp, delete)
 
 ```{r}
 patient_subset$patientunitstayid <- NULL # Duplicates icustay_id
+
+# Delete O2measurements that belong to patients not in the selected subset
+O2measurement <- O2measurement[O2measurement$icustay_id %in% patient_subset$icustay_id,]
 
 # Cases with no diagnoses from ICD-9 codes have all diagnoses as "NA"
 # These should be FALSE.
@@ -286,6 +492,11 @@ summary(patient_subset[,tmp])
 ```
 
 
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent3.RData")
+```
+
+
 # Compute summaries of oxygen measurements
 
 We compute the median oxygen level and the proportion of measurements within 94% to 97% oxygen saturation.
@@ -300,7 +511,11 @@ n <- nrow(patient_subset)
 pb <- txtProgressBar(max = n, style = 3)
 
 for(i in 1:n) {
-  tmp <- O2measurement$spO2_Value[O2measurement$icustay_id == patient_subset$icustay_id[i]]
+  tmp <- O2measurement$spO2_Value[
+    O2measurement$icustay_id == patient_subset$icustay_id[i]
+    & O2measurement$measurement_time >= patient_subset$vent_start[i]
+    & O2measurement$measurement_time <= patient_subset$vent_end[i]
+  ]
   
   patient_subset$median[i] <- median(tmp)
   patient_subset$prop[i] <- mean(tmp >= 94 & tmp <= 97)
@@ -308,7 +523,7 @@ for(i in 1:n) {
   setTxtProgressBar(pb, i)
 }
 close(pb)
-rm(i,tmp,pb)
+rm(i,tmp,pb,O2measurement)
 
 summary(patient_subset$median)
 summary(patient_subset$prop)
@@ -366,7 +581,7 @@ logistic <- function(x) 1/(1+exp(-x))
 ```
 
 ```{r gamfitMed}
-gamfitMed <- gamm(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+gamfitMed <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
 summary(gamfitMed)
 
 xRange = c(92, 100)
@@ -427,7 +642,7 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
 We now fit a GAM with the proportion of measurements within a range instead of the median of the measurements.
 
 ```{r gamfitProp}
-gamfitProp <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+gamfitProp <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
 summary(gamfitProp)
 
 logistic <- function(x) 1/(1+exp(-x))
