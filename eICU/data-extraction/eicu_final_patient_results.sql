@@ -43,8 +43,6 @@ COUNT(CASE WHEN icd_code.icd9code BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_str
 FROM icd_code
 GROUP BY icd_code.patientunitstayid)
 
-
-
 SELECT 
   pat.gender,
   pat.unittype,
@@ -59,8 +57,7 @@ SELECT
   pat.hospitalid AS hospital_id,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
-  icd_presence.*, -- By using `*`, we select patientunitstayid twice
-  device.o2_device
+  icd_presence.* EXCEPT(patientunitstayid)
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
