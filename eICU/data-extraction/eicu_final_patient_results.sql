@@ -41,9 +41,42 @@ COUNT(CASE WHEN icd_code.icd9code BETWEEN 410 AND 414 THEN 1 END) > 0 AS has_isa
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 427 AND 427 THEN 1 END) > 0 AS has_atrial_fibrillation_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_stroke_disease
 FROM icd_code
-GROUP BY icd_code.patientunitstayid)
+GROUP BY icd_code.patientunitstayid),
 
 
+oxygen_therapy_presence AS (
+SELECT
+chart.patientunitstayid,
+COUNT(LOWER(chart.nursingchartvalue) = 'trach collar') > 0 AS has_trach_collar,
+COUNT(LOWER(chart.nursingchartvalue) IN ('nasal cannula', 'nc', 'niv')) > 0 AS has_noninvasive_ventilation
+FROM chart
+GROUP BY chart.patientunitstayid)
+
+/*
+TODO
+
+These are the other ventilation techniques ID'd by Willem, not incorporated
+into this classification yet:
+
+'ventilator',
+'vent',
+'ett oral',
+'bipap/cpap',
+'venturi mask',
+'non-rebreather',
+'cool aerosol mask',
+'bipap',
+'oxymizer',
+'hfnc',
+'cpap',
+'oximizer',
+'high flow',
+'oxymask',
+'face tent',
+'vented',
+'hi flow',
+'hiflow'
+ */
 
 SELECT 
   pat.gender,
@@ -59,8 +92,11 @@ SELECT
   pat.hospitalid AS hospital_id,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
-  icd_presence.*, -- By using `*`, we select patientunitstayid twice
-  device.o2_device
+  icd_presence.* EXCEPT(patientunitstayid),
+  oxygen_therapy_presence.* EXCEPT(patientunitstayid)
+  ---device.o2_device
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
+LEFT JOIN oxygen_therapy_presence
+  ON pat.patientunitstayid = oxygen_therapy_presence.patientunitstayid
