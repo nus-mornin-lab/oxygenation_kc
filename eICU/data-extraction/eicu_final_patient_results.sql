@@ -9,6 +9,19 @@ SELECT * FROM `oxygenators-209612.eicu.diagnosis`),
 chart AS (
 SELECT * FROM `oxygenators-209612.eicu.nursecharting`),
 
+apsiii_raw AS (
+SELECT * FROM `oxygenators-209612.eicu.apachepatientresult`),
+
+intakeoutput AS (
+SELECT DISTINCT
+patientunitstayid,
+intakeoutputoffset,
+nettotal
+FROM `oxygenators-209612.eicu.intakeoutput`),
+
+respchart AS (
+SELECT * FROM `oxygenators-209612.eicu.respiratorycharting`),
+
 
 icd_code AS (
 SELECT
@@ -41,7 +54,34 @@ COUNT(CASE WHEN icd_code.icd9code BETWEEN 410 AND 414 THEN 1 END) > 0 AS has_isa
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 427 AND 427 THEN 1 END) > 0 AS has_atrial_fibrillation_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_stroke_disease
 FROM icd_code
-GROUP BY icd_code.patientunitstayid)
+GROUP BY icd_code.patientunitstayid),
+
+
+apsiii AS (
+SELECT
+apsiii_raw.patientunitstayid,
+MAX(apsiii_raw.apachescore) as apsiii
+FROM apsiii_raw
+GROUP BY apsiii_raw.patientunitstayid),
+
+
+fluid_balance AS (
+SELECT
+intakeoutput.patientunitstayid,
+SUM(intakeoutput.nettotal) as fluid_balance
+FROM intakeoutput
+GROUP BY intakeoutput.patientunitstayid),
+
+
+ventilation_high_proportion AS (
+SELECT
+respchart.patientunitstayid,
+AVG(CASE WHEN SAFE_CAST(respchartvalue as NUMERIC) >= 6.5 THEN 1 ELSE 0 END) 
+as ventilation_high_proportion
+FROM respchart
+WHERE respchart.respchartvaluelabel = "TV/kg IBW"
+GROUP BY respchart.patientunitstayid)
+
 
 SELECT 
   pat.gender,
@@ -57,7 +97,17 @@ SELECT
   pat.hospitalid AS hospital_id,
   CASE WHEN pat.unitdischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_ICU,
   CASE WHEN pat.hospitaldischargestatus = "Alive" THEN 0 ELSE 1 END AS mortality_in_Hospt,
-  icd_presence.* EXCEPT(patientunitstayid)
+  icd_presence.* EXCEPT(patientunitstayid),
+  apsiii.* EXCEPT(patientunitstayid),
+  fluid_balance.* EXCEPT(patientunitstayid),
+  ventilation_high_proportion.* EXCEPT(patientunitstayid)
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
+LEFT JOIN apsiii
+  ON pat.patientunitstayid = apsiii.patientunitstayid
+LEFT JOIN fluid_balance
+  ON pat.patientunitstayid = fluid_balance.patientunitstayid
+LEFT JOIN ventilation_high_proportion
+  ON pat.patientunitstayid = ventilation_high_proportion.patientunitstayid
+
