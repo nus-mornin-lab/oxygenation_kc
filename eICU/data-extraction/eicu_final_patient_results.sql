@@ -30,6 +30,7 @@ icd_presence AS (
 SELECT
 icd_code.patientunitstayid,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 001 AND 139 THEN 1 END) > 0 AS has_infectous_disease,
+COUNT(CASE WHEN icd_code.icd9code BETWEEN 038 AND 038 THEN 1 END) > 0 AS has_sepsis,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 140 AND 239 THEN 1 END) > 0 AS has_neoplasm_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 240 AND 279 THEN 1 END) > 0 AS has_endocrine_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 280 AND 289 THEN 1 END) > 0 AS has_blood_disease,
