@@ -13,7 +13,11 @@ apsiii_raw AS (
 SELECT * FROM `oxygenators-209612.eicu.apachepatientresult`),
 
 intakeoutput AS (
-SELECT * FROM `oxygenators-209612.eicu.intakeoutput`),
+SELECT DISTINCT
+patientunitstayid,
+intakeoutputoffset,
+nettotal
+FROM `oxygenators-209612.eicu.intakeoutput`),
 
 respchart AS (
 SELECT * FROM `oxygenators-209612.eicu.respiratorycharting`),

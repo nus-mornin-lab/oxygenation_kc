@@ -50,13 +50,13 @@ SELECT * FROM eicu.final_measurement_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save(patient, O2measurement, file = "RData/eICU_data_analysis_v4_checkpoint1.RData")
+save(patient, O2measurement, file = "RData/eICU_data_analysis_v5_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/eICU_data_analysis_v4_checkpoint1.RData")
+load("RData/eICU_data_analysis_v5_checkpoint1.RData")
 ```
 
 
@@ -171,83 +171,27 @@ length(unique(patient$patient_ID[is.na(patient$first_stay)]))
 # Ventilation times
 
 We determine the ventilation times based on a variety of data tables.
-We do not use `respiratorycare` since it time stamps [are not recorded correctly](https://github.com/MIT-LCP/eicu-code/issues/49).
+We do not use `respiratorycare` since its time stamps [are not recorded correctly](https://github.com/MIT-LCP/eicu-code/issues/49).
 
 In `nursecharting`, we look at the presence of a positive oxygen flow or oxygen admin devices that indicate oxygen therapy.
 We are only interested in positive oxygen flows. Also, we ignore what happens more than an hour in advance of ICU admission.
-```{r loadO2flowData, eval=FALSE}
-vent_times <- run_query("
-SELECT DISTINCT
-    patientunitstayid as icustay_id,
-		nursingChartOffset as time
-		FROM `oxygenators-209612.eicu.nursecharting`
-    WHERE (  ( nursingchartcelltypevallabel = 'O2 L/%'
-    AND SAFE_CAST(nursingChartValue AS INT64) > 0
-    AND SAFE_CAST(nursingChartValue AS INT64) <= 100
-    ) OR (
-			nursingchartcelltypevallabel = 'O2 Admin Device'
-		AND LOWER(nursingchartvalue) IN (
-			-- This list is not exhaustive. It is a classification by Willem of the most common O2 devices that indicate oxygen therapy. We should probably check it with KC See
-			'ventilator',
-'vent',
-'trach collar',
-'ett oral',
-'nasal cannula',
-'bipap/cpap',
-'trach collar',
-'nc',
-'venturi mask',
-'non-rebreather',
-'cool aerosol mask',
-'bipap',
-'oxymizer',
-'hfnc',
-'cpap',
-'oximizer',
-'high flow',
-'oxymask',
-'niv', -- noninvasive ventilation
-'face tent',
-'vented',
-'hi flow',
-'hiflow'
-		) ) )
-    AND nursingChartOffset > -60
-")
-```
-
 `respiratorycharting.respchartvaluelabel` sometimes indicates ventilation.
-```{r load_resp_chart, eval=FALSE}
-vent_times <- rbind(vent_times, run_query("
-SELECT DISTINCT patientunitstayid as icustay_id,
-					respchartoffset as time
-   FROM `oxygenators-209612.eicu.respiratorycharting`
-  WHERE respchartoffset >= 0 AND 
-( LOWER(respchartvaluelabel) LIKE '%ventilator%'
-     OR LOWER(respchartvaluelabel) LIKE '%vent%'
-     OR LOWER(respchartvaluelabel) LIKE '%bipap%'
-     OR LOWER(respchartvaluelabel) LIKE '%840%'
-     OR LOWER(respchartvaluelabel) LIKE '%cpap%'
-     OR LOWER(respchartvaluelabel) LIKE '%drager%'
-     OR LOWER(respchartvaluelabel) LIKE 'mv%'
-     OR LOWER(respchartvaluelabel) LIKE '%servo%'
-     OR LOWER(respchartvaluelabel) LIKE '%peep%' )
-"))
+All this is contained in the SQL view `oxygen_therapy`.Furthermore, `type` indicates whether the entry suggests invasive ventilation (4), noninvasive ventilation (3), either invasive or noninvasive ventilation (2), supplemental oxygen (1). If the entry does not suggest a type of oxygen therapy, `type = 0`.
+```{r loadOxygenTherapyData, eval=FALSE}
+oxygen_therapy <- run_query('
+SELECT * FROM eicu.oxygen_therapy
+')
 ```
 
-`treatment.treatmentstring` sometimes indicates ventilation.
+`treatment.treatmentstring` sometimes indicates ventilation. We load its oxygen therapy entries in a seperate view as `treatment` includes `activeUponDischarge` which the other tables do not.
 ```{r load_treatment, eval=FALSE}
-treatment <- run_query("
-SELECT DISTINCT patientunitstayid as icustay_id,
-					treatmentoffset as time,
-          activeUponDischarge
-FROM `oxygenators-209612.eicu.treatment`
-WHERE treatmentstring IN ('pulmonary|ventilation and oxygenation|mechanical ventilation', 'pulmonary|ventilation and oxygenation|tracheal suctioning', 'pulmonary|ventilation and oxygenation|ventilator weaning', 'pulmonary|ventilation and oxygenation|mechanical ventilation|assist controlled', 'pulmonary|radiologic procedures / bronchoscopy|endotracheal tube', 'pulmonary|ventilation and oxygenation|oxygen therapy (> 60%)', 'pulmonary|ventilation and oxygenation|mechanical ventilation|tidal volume 6-10 ml/kg', 'pulmonary|ventilation and oxygenation|mechanical ventilation|volume controlled', 'surgery|pulmonary therapies|mechanical ventilation', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy', 'pulmonary|ventilation and oxygenation|mechanical ventilation|synchronized intermittent', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|performed during current admission for ventilatory support', 'pulmonary|ventilation and oxygenation|ventilator weaning|active', 'pulmonary|ventilation and oxygenation|mechanical ventilation|pressure controlled', 'pulmonary|ventilation and oxygenation|mechanical ventilation|pressure support', 'pulmonary|ventilation and oxygenation|ventilator weaning|slow', 'surgery|pulmonary therapies|ventilator weaning', 'surgery|pulmonary therapies|tracheal suctioning', 'pulmonary|radiologic procedures / bronchoscopy|reintubation', 'pulmonary|ventilation and oxygenation|lung recruitment maneuver', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|planned', 'surgery|pulmonary therapies|ventilator weaning|rapid', 'pulmonary|ventilation and oxygenation|prone position', 'pulmonary|surgery / incision and drainage of thorax|tracheostomy|conventional', 'pulmonary|ventilation and oxygenation|mechanical ventilation|permissive hypercapnea', 'surgery|pulmonary therapies|mechanical ventilation|synchronized intermittent', 'pulmonary|medications|neuromuscular blocking agent', 'surgery|pulmonary therapies|mechanical ventilation|assist controlled', 'pulmonary|ventilation and oxygenation|mechanical ventilation|volume assured', 'surgery|pulmonary therapies|mechanical ventilation|tidal volume 6-10 ml/kg', 'surgery|pulmonary therapies|mechanical ventilation|pressure support', 'pulmonary|ventilation and oxygenation|non-invasive ventilation', 'pulmonary|ventilation and oxygenation|non-invasive ventilation|face mask', 'pulmonary|ventilation and oxygenation|non-invasive ventilation|nasal mask', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation|face mask', 'surgery|pulmonary therapies|non-invasive ventilation', 'surgery|pulmonary therapies|non-invasive ventilation|face mask', 'pulmonary|ventilation and oxygenation|mechanical ventilation|non-invasive ventilation|nasal mask', 'surgery|pulmonary therapies|non-invasive ventilation|nasal mask', 'surgery|pulmonary therapies|mechanical ventilation|non-invasive ventilation', 'surgery|pulmonary therapies|mechanical ventilation|non-invasive ventilation|face mask')
-")
+oxygen_therapy_treatment <- run_query('
+SELECT * FROM eicu.oxygen_therapy_treatment
+')
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent.RData")
+save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent.RData")
 ```
 
 Oxygen flows and respiratorycharting entries are usually recorded every 60 minutes and oxygen administration devices mostly in at most 2 hour intervals but we allow for gaps of up to 24*60 minutes.
@@ -255,23 +199,25 @@ Treatment is recorded irregularly but mostly more often than every day (24*60 mi
 ```{r determineVentilation, eval=FALSE}
 tmp_IDs <- unique(patient$patientunitstayid[patient$first_stay & !is.na(patient$first_stay)])
 
-# We only keep entries in `vent_times` and `treatment` that appear in tmp_IDs for computational efficiency.
-vent_times <- vent_times[vent_times$icustay_id %in% tmp_IDs,]
-treatment <- treatment[treatment$icustay_id %in% tmp_IDs,]
+# We only keep entries in `oxygen_therapy` and `oxygen_therapy_treatment` that appear in tmp_IDs for computational efficiency.
+oxygen_therapy <- oxygen_therapy[oxygen_therapy$icustay_id %in% tmp_IDs,]
+oxygen_therapy_treatment <- oxygen_therapy_treatment[oxygen_therapy_treatment$icustay_id %in% tmp_IDs,]
 
-tmp_IDs <- unique(vent_times$icustay_id, treatment$icustay_id)
+tmp_IDs <- unique(c(oxygen_therapy$icustay_id, oxygen_therapy_treatment$icustay_id))
 n <- length(tmp_IDs)
 
 patient$vent_start <- NA_integer_
 patient$vent_end <- NA_integer_
+patient$oxygen_therapy_type <- NA_integer_
 
 pb <- txtProgressBar(max = n, style = 3)
 for(i in 1:n) {
   id <- tmp_IDs[i]
   patient_ind <- which(patient$patientunitstayid == id)
   
-  tmp_treatment <- treatment[treatment$icustay_id == id, -1]
-  times <- sort(c(vent_times$time[vent_times$icustay_id == id], tmp_treatment$time))
+  tmp_treatment <- oxygen_therapy_treatment[oxygen_therapy_treatment$icustay_id == id, -1]
+  tmp_therapy <- oxygen_therapy[oxygen_therapy$icustay_id == id, -1]
+  times <- sort(c(tmp_therapy$time, tmp_treatment$time))
   patient$vent_start[patient_ind] <- times[1]
   
   n_times <- length(times)
@@ -295,11 +241,17 @@ for(i in 1:n) {
     }
   }
   
+  # Determine the oxygen therapy type
+  patient$oxygen_therapy_type[patient_ind] <- max(c(
+    tmp_therapy$type[tmp_therapy$time >= patient$vent_start[patient_ind] & tmp_therapy$time <= patient$vent_end[patient_ind]],
+    tmp_treatment$type[tmp_treatment$time >= patient$vent_start[patient_ind] & tmp_treatment$time <= patient$vent_end[patient_ind]]
+  ))
+  
   setTxtProgressBar(pb, i)
 }
 close(pb)
 
-rm(tmp_IDs, n, id, times, n_times, breaks, i, pb, vent_times, treatment, last_treatment_time)
+rm(tmp_IDs, n, id, times, n_times, breaks, i, pb, oxygen_therapy, oxygen_therapy_treatment, last_treatment_time, tmp_treatment, tmp_therapy, patient_ind)
 
 # End time is currently a charting time
 # Since these are usually recorded hourly, ventilation is actually longer
@@ -308,11 +260,11 @@ patient$vent_end <- patient$vent_end + 60
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent2.RData")
+save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v4_checkpoint_vent2.RData")
+load(file = "RData/eICU_data_analysis_v5_checkpoint_vent2.RData")
 ```
 
 ```{r}
@@ -335,7 +287,7 @@ O2measurement <- O2measurement[O2measurement$spO2_Value <= 100 & O2measurement$s
 
 Count the number of oxygen measurements per first ventilation of ICU stay
 Since we only need these counts for the first ICU stay, we constrain ourselves to this subset for speed.
-We only count measurements that happen during the first ventilation, and we are only interested in ventilations of at least 48 hours.
+We only count measurements that happen during the first oxygen therapy session, and we are only interested in those receiving oxygen for at least 48 hours.
 ```{r countOxygen, include=TRUE, eval=FALSE}
 nOxy_limit <- 24
 
@@ -377,11 +329,11 @@ rm(pb, i, index, tmp_IDs, n, ind)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent2_2.RData")
+save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent2_2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v4_checkpoint_vent2_2.RData")
+load(file = "RData/eICU_data_analysis_v5_checkpoint_vent2_2.RData")
 ```
 
 ```{r}
@@ -493,7 +445,7 @@ summary(patient_subset[,tmp])
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v4_checkpoint_vent3.RData")
+save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent3.RData")
 ```
 
 
@@ -530,13 +482,13 @@ summary(patient_subset$prop)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/eICU_data_analysis_v4_checkpoint2.RData")
+save.image("RData/eICU_data_analysis_v5_checkpoint2.RData")
 ```
 
 ```{r loadProcessedData, include=FALSE, eval=TRUE}
 # Since computing the oxygen summaries takes a long time,
 # I load the results from an RData file.
-load("RData/eICU_data_analysis_v4_checkpoint2.RData")
+load("RData/eICU_data_analysis_v5_checkpoint2.RData")
 ```
 
 
@@ -576,23 +528,19 @@ boxplot(patient_subset$prop ~ patient_subset$mortality_in_ICU)
 We fit a generalized additive model (GAM) to check for the effect of the median oxygen saturation. GAMs are regression models that allow for nonlinear effects of the predictors.
 We add gender and age as predictors to control for them. We also control for hospital but since there are so many hospitals, we add it as a random effect.
 
-```{r}
-logistic <- function(x) 1/(1+exp(-x))
-```
-
 ```{r gamfitMed}
-gamfitMed <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitMed)
+logistic <- function(x) 1/(1+exp(-x))
 
-xRange = c(92, 100)
-yRange = c(0, .2)
+gam_plot <- function(gamfitMed,
+                    main = "Median of measurements",
+                    xRange = c(92, 100),
+                    yRange = c(0, .4)
+) {
 
 xlab <- "Median oxygen saturation (SpO2)"
 ylab <- "Probability of ICU mortality" 
 
 xName <- "median"
-
-main <- "Median of measurements"
 
 # Color for dotted line
 colD <- "Black"
@@ -634,6 +582,27 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     lines(x = xx, y = ucl, lty = 2, lwd = 2)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
   }
+}
+
+gamfitMed <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitMed)
+gam_plot(gamfitMed)
+
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial)
+summary(gamfitMed_type)
+gam_plot(gamfitMed_type, main = "Supplementary oxygen")
+
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
+summary(gamfitMed_type)
+gam_plot(gamfitMed_type, main = "Mechanical ventilation")
+
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
+summary(gamfitMed_type)
+gam_plot(gamfitMed_type, main = "Noninvasive ventilation")
+
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
+summary(gamfitMed_type)
+gam_plot(gamfitMed_type, main = "Invasive ventilation")
 ```
 
 
@@ -642,19 +611,14 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
 We now fit a GAM with the proportion of measurements within a range instead of the median of the measurements.
 
 ```{r gamfitProp}
-gamfitProp <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitProp)
-
-logistic <- function(x) 1/(1+exp(-x))
+gam_plot <- function(gamfitProp, main = "Effect of treatment regime"){
 xRange = c(0, max(patient_subset$prop, na.rm= TRUE))
-yRange = c(0, .2)
+yRange = c(0, .3)
 
 xlab <- "Proportion of time with an SpO2 within 94 to 97"
 ylab <- "Probability of ICU mortality" 
 
 xName <- "prop"
-
-main <- "Effect of treatment regime"
 
     plot(1, type = 'n', xlim = xRange, ylim = yRange,
          ylab = ylab,
@@ -693,6 +657,27 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     lines(x = xx, y = ucl, lty = 2, lwd = 2)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
   }
+}
+
+gamfitProp <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial)#gamm(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp)
+gam_plot(gamfitProp)
+
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial)
+summary(gamfitProp_type)
+gam_plot(gamfitProp_type, main = "Supplementary oxygen")
+
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
+summary(gamfitProp_type)
+gam_plot(gamfitProp_type, main = "Mechanical ventilation")
+
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
+summary(gamfitProp_type)
+gam_plot(gamfitProp_type, main = "Noninvasive ventilation")
+
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
+summary(gamfitProp_type)
+gam_plot(gamfitProp_type, main = "Invasive ventilation")
 ```
 
 
