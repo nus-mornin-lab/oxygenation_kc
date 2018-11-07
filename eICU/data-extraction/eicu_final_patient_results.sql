@@ -18,6 +18,9 @@ SELECT * FROM `oxygenators-209612.eicu.intakeoutput`),
 respchart AS (
 SELECT * FROM `oxygenators-209612.eicu.respiratorycharting`),
 
+sofa_results AS (
+SELECT * FROM `oxygenators-209612.eicu.sofa_results`),
+
 
 icd_code AS (
 SELECT
@@ -97,7 +100,8 @@ SELECT
   icd_presence.* EXCEPT(patientunitstayid),
   apsiii.* EXCEPT(patientunitstayid),
   fluid_balance.* EXCEPT(patientunitstayid),
-  ventilation_high_proportion.* EXCEPT(patientunitstayid)
+  ventilation_high_proportion.* EXCEPT(patientunitstayid),
+  sofa_results.* EXCEPT(patientunitstayid)
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
@@ -107,4 +111,5 @@ LEFT JOIN fluid_balance
   ON pat.patientunitstayid = fluid_balance.patientunitstayid
 LEFT JOIN ventilation_high_proportion
   ON pat.patientunitstayid = ventilation_high_proportion.patientunitstayid
-
+LEFT JOIN sofa_results
+  ON pat.patientunitstayid = sofa_results.patientunitstayid
