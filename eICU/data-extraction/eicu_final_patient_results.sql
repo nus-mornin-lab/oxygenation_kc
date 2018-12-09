@@ -29,7 +29,8 @@ SELECT * FROM `oxygenators-209612.eicu.sofa_results`),
 icd_code AS (
 SELECT
 diag.patientunitstayid,
-SAFE_CAST(SUBSTR(diag.icd9code, 0, 3) as INT64) AS icd9code
+SAFE_CAST(SUBSTR(diag.icd9code, 0, 3) as INT64) AS icd9code,
+icd9code AS icd9code_string
 FROM diag),
 
 
@@ -56,7 +57,11 @@ COUNT(CASE WHEN icd_code.icd9code BETWEEN 780 AND 799 THEN 1 END) > 0 AS has_oth
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 800 AND 999 THEN 1 END) > 0 AS has_injury_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 410 AND 414 THEN 1 END) > 0 AS has_isachaemic_heart_disease,
 COUNT(CASE WHEN icd_code.icd9code BETWEEN 427 AND 427 THEN 1 END) > 0 AS has_atrial_fibrillation_disease,
-COUNT(CASE WHEN icd_code.icd9code BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_stroke_disease
+COUNT(CASE WHEN icd_code.icd9code BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_stroke_disease,
+COUNT(CASE WHEN icd_code.icd9code_string LIKE '%428%' THEN 1 END) > 0 AS CHF, -- Congestive heart failure
+COUNT(CASE WHEN icd_code.icd9code_string LIKE '%427.31%' THEN 1 END) > 0 AS AF, -- Atrial fibrillation
+COUNT(CASE WHEN icd_code.icd9code_string LIKE '%414.01%' THEN 1 END) > 0 AS CAD, -- Coronary artery disease
+COUNT(CASE WHEN icd_code.icd9code_string LIKE '%585%' THEN 1 END) > 0 AS CKD -- Chronic kidney disease
 FROM icd_code
 GROUP BY icd_code.patientunitstayid),
 
@@ -74,17 +79,8 @@ SELECT
 intakeoutput.patientunitstayid,
 SUM(intakeoutput.nettotal) as fluid_balance
 FROM intakeoutput
-GROUP BY intakeoutput.patientunitstayid),
+GROUP BY intakeoutput.patientunitstayid)
 
-
-ventilation_high_proportion AS (
-SELECT
-respchart.patientunitstayid,
-AVG(CASE WHEN SAFE_CAST(respchartvalue as NUMERIC) >= 6.5 THEN 1 ELSE 0 END) 
-as ventilation_high_proportion
-FROM respchart
-WHERE respchart.respchartvaluelabel = "TV/kg IBW"
-GROUP BY respchart.patientunitstayid)
 
 
 SELECT 
@@ -104,7 +100,6 @@ SELECT
   icd_presence.* EXCEPT(patientunitstayid),
   apsiii.* EXCEPT(patientunitstayid),
   fluid_balance.* EXCEPT(patientunitstayid),
-  ventilation_high_proportion.* EXCEPT(patientunitstayid),
   sofa_results.* EXCEPT(patientunitstayid)
 FROM pat
 LEFT JOIN icd_presence
@@ -113,7 +108,5 @@ LEFT JOIN apsiii
   ON pat.patientunitstayid = apsiii.patientunitstayid
 LEFT JOIN fluid_balance
   ON pat.patientunitstayid = fluid_balance.patientunitstayid
-LEFT JOIN ventilation_high_proportion
-  ON pat.patientunitstayid = ventilation_high_proportion.patientunitstayid
 LEFT JOIN sofa_results
   ON pat.patientunitstayid = sofa_results.patientunitstayid

@@ -1,7 +1,7 @@
 ---
 title: Oxygen project using eICU data
 author: Willem van den Boom
-date: October 6, 2018
+date: December 9, 2018
 output:
   html_document: default
 editor_options:
@@ -50,13 +50,13 @@ SELECT * FROM eicu.final_measurement_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save(patient, O2measurement, file = "RData/eICU_data_analysis_v5_checkpoint1.RData")
+save(patient, O2measurement, file = "RData/eICU_data_analysis_v6_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/eICU_data_analysis_v5_checkpoint1.RData")
+load("RData/eICU_data_analysis_v6_checkpoint1.RData")
 ```
 
 
@@ -191,7 +191,7 @@ SELECT * FROM eicu.oxygen_therapy_treatment
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent.RData")
+save.image(file = "RData/eICU_data_analysis_v6_checkpoint_vent.RData")
 ```
 
 Oxygen flows and respiratorycharting entries are usually recorded every 60 minutes and oxygen administration devices mostly in at most 2 hour intervals but we allow for gaps of up to 24*60 minutes.
@@ -260,11 +260,11 @@ patient$vent_end <- patient$vent_end + 60
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent2.RData")
+save.image(file = "RData/eICU_data_analysis_v6_checkpoint_vent2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v5_checkpoint_vent2.RData")
+load(file = "RData/eICU_data_analysis_v6_checkpoint_vent2.RData")
 ```
 
 ```{r}
@@ -287,24 +287,28 @@ O2measurement <- O2measurement[O2measurement$spO2_Value <= 100 & O2measurement$s
 
 Count the number of oxygen measurements per first ventilation of ICU stay
 Since we only need these counts for the first ICU stay, we constrain ourselves to this subset for speed.
-We only count measurements that happen during the first oxygen therapy session, and we are only interested in those receiving oxygen for at least 48 hours.
-```{r countOxygen, include=TRUE, eval=FALSE}
-nOxy_limit <- 24
+We only count measurements that happen during the first oxygen therapy session, and we are only interested in those receiving oxygen for at least 48 or `time_limit` hours.
 
+```{r}
+nOxy_limit <- 24
+time_limit <- 60*24*2
+```
+
+```{r countOxygen, include=TRUE, eval=FALSE}
 tmp <- unique(O2measurement$icustay_id)
-tmp <- tmp[!(tmp %in% patient$icustay_id[patient$first_stay & patient$vent_end - patient$vent_start >= 60*24*2])]
+tmp <- tmp[!(tmp %in% patient$icustay_id[patient$first_stay & patient$vent_end - patient$vent_start >= time_limit])]
 tmp <- table(O2measurement$icustay_id, exclude = tmp)
 
 patient$nOxy <- as.numeric(tmp[match(patient$icustay_id, names(tmp))])
 rm(tmp)
 
 # ICU stays that do not have any measurements are currently NA and should be 0.
-patient$nOxy[which(is.na(patient$nOxy) & patient$vent_end - patient$vent_start >= 60*24*2)] <- 0
+patient$nOxy[which(is.na(patient$nOxy) & patient$vent_end - patient$vent_start >= time_limit)] <- 0
 
 
 # We've counted all oxygen measurements.
 # We should only be counting the measurements that happen during ventilation
-tmp_IDs <- patient$icustay_id[which(patient$vent_end - patient$vent_start >= 60*24*2 & patient$nOxy >= nOxy_limit)]
+tmp_IDs <- patient$icustay_id[which(patient$vent_end - patient$vent_start >= time_limit & patient$nOxy >= nOxy_limit)]
 n <- length(tmp_IDs)
 
 # Delete O2measurements that belong to patients that won't be in the selected subset
@@ -329,16 +333,81 @@ rm(pb, i, index, tmp_IDs, n, ind)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent2_2.RData")
+save.image(file = "RData/eICU_data_analysis_v6_checkpoint_vent2_2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v5_checkpoint_vent2_2.RData")
+load(file = "RData/eICU_data_analysis_v6_checkpoint_vent2_2.RData")
 ```
 
 ```{r}
-mean(patient$nOxy[which(patient$vent_end - patient$vent_start >= 60*24*2)] >= nOxy_limit)
+mean(patient$nOxy[which(patient$vent_end - patient$vent_start >= time_limit)] >= nOxy_limit)
 ```
+
+
+
+# Determine high ventilation
+
+Let us compute what proportion of the ventilation time the tidal volume is above 6.5 milliliter per kilogram of body mass. For that, we first load data from `respiratorycharting`.
+
+```{r include=TRUE, eval=FALSE}
+tidal_volume <- run_query('
+SELECT patientunitstayid as icustay_id,
+		respchartoffset as time,
+    MAX(SAFE_CAST(respchartvalue as FLOAT64)) as TV
+FROM `oxygenators-209612.eicu.respiratorycharting`
+WHERE respchartvaluelabel = "TV/kg IBW"
+GROUP BY patientunitstayid, respchartoffset
+')
+```
+
+
+Compute proportion of tidal volume >= 6.5 but only for those with more than `nOxy_limit` oxygen measurements. We only consider tidal volumes recorded during the ventilation session.
+
+```{r include=TRUE, eval=FALSE}
+# Only keep entries in `tidal_volume` of ICU stays with at least `nOxy_limit` oxygen measurements.
+tidal_volume <- tidal_volume[tidal_volume$icustay_id %in% patient$icustay_id[patient$nOxy >= nOxy_limit], ]
+
+patient$high_vent_proportion <- NA_real_
+
+tmp <- unique(tidal_volume$icustay_id)
+
+n <- length(tmp)
+pb <- txtProgressBar(max = n, style = 3)
+for(i in 1:n) {
+  id <- tmp[i]
+  
+  tmp_TV <- tidal_volume[tidal_volume$icustay_id == id,]
+  
+  ind <- which(patient$icustay_id == id)
+  
+  patient$high_vent_proportion[ind] <- mean(
+    tmp_TV$TV[
+      tmp_TV$time >= patient$vent_start[ind] &
+        tmp_TV$time <= patient$vent_end[ind]
+    ] >= 6.5
+  )
+  
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+
+rm(i, id, ind, n, pb, tidal_volume, tmp, tmp_TV)
+```
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/eICU_data_analysis_v6_checkpoint_vent2_3.RData")
+```
+
+```{r include=FALSE, eval=TRUE}
+load(file = "RData/eICU_data_analysis_v6_checkpoint_vent2_3.RData")
+```
+
+```{r}
+summary(patient$high_vent_proportion)
+summary(is.na(patient$high_vent_proportion))
+```
+
 
 
 # Subset selection
@@ -352,7 +421,7 @@ cat("Total number of ICU stays:", nrow(patient))
 tmp <- which(patient$first_stay)
 cat("\nNumber of first stays:", length(tmp))
 cat("\nNumber of patients for whom we couldn't determine first stays:", length(unique(patient$patient_ID[is.na(patient$first_stay)])))
-tmp <- which(patient$vent_end - patient$vent_start >= 60*24*2)
+tmp <- which(patient$vent_end - patient$vent_start >= time_limit)
 cat("\nNumber of first ventilations of at least 48 hours:", length(tmp))
 patient_subset <- patient[tmp,]
 
@@ -385,11 +454,22 @@ tmp <- patient_subset$nOxy < nOxy_limit
 cat("\nPatients with too few measurements:", sum(tmp), "out of", nrow(patient_subset))
 delete <- delete | tmp
 
-
 patient_subset <- patient_subset[!delete,]
+
+
+### We do note subset by `high_vent_proportion` since this is not recorded for those on supplementary oxygen.
+### Tidal volume is also often not recorded for those on noninvasive ventilation.
+table(is.na(patient_subset$high_vent_proportion), patient_subset$oxygen_therapy_type)
+# # Delete those with no `high_vent_proportion`
+# tmp <- is.na(patient_subset$high_vent_proportion)
+# cat("\nPatients with no tidal volume records during ventilation:", sum(tmp), "out of", nrow(patient_subset))
+# delete <- tmp
+# patient_subset <- patient_subset[!delete,]
+
+
 cat("\nPatients selected:", nrow(patient_subset))
 
-rm(delete)
+rm(delete, tmp)
 ```
 
 
@@ -445,7 +525,7 @@ summary(patient_subset[,tmp])
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v5_checkpoint_vent3.RData")
+save.image(file = "RData/eICU_data_analysis_v6_checkpoint_vent3.RData")
 ```
 
 
@@ -482,13 +562,13 @@ summary(patient_subset$prop)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/eICU_data_analysis_v5_checkpoint2.RData")
+save.image("RData/eICU_data_analysis_v6_checkpoint2.RData")
 ```
 
 ```{r loadProcessedData, include=FALSE, eval=TRUE}
 # Since computing the oxygen summaries takes a long time,
 # I load the results from an RData file.
-load("RData/eICU_data_analysis_v5_checkpoint2.RData")
+load("RData/eICU_data_analysis_v6_checkpoint2.RData")
 ```
 
 
@@ -558,8 +638,16 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     axis(1, at = att, lab = paste0(att, '%'), las = TRUE)
 
     
+    
+    if("high_vent_proportion" %in% colnames(gamfitMed$model)) {
+      eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitMed, newdata = data.frame(',
+                              xName, ' = gamfitMed$model$', xName, ", gender = 'F', age = median(gamfitMed$model$age), hospital_id = 264,
+            high_vent_proportion = median(gamfitMed$model$high_vent_proportion)
+          ), type = 'link', se.fit = T)"), collapse = "")))  
+    } else {
     eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitMed, newdata = data.frame(',
                               xName, ' = gamfitMed$model$', xName, ", gender = 'F', age = median(gamfitMed$model$age), hospital_id = 264), type = 'link', se.fit = T)"), collapse = "")))
+    }
 
   
   # We have to use the data on which GAM was fit for confidence region as the GAM does not provide standard errors for 'new' input
@@ -592,15 +680,15 @@ gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient
 summary(gamfitMed_type)
 gam_plot(gamfitMed_type, main = "Supplementary oxygen")
 
-gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
 summary(gamfitMed_type)
 gam_plot(gamfitMed_type, main = "Mechanical ventilation")
 
-gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
 summary(gamfitMed_type)
 gam_plot(gamfitMed_type, main = "Noninvasive ventilation")
 
-gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitMed_type <- gam(mortality_in_ICU ~ s(median)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
 summary(gamfitMed_type)
 gam_plot(gamfitMed_type, main = "Invasive ventilation")
 ```
@@ -632,10 +720,17 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     att <- pretty(xRange)
     axis(1, at = att, lab = paste0(att*100, '%'), las = TRUE)
 
-    
+    if("high_vent_proportion" %in% colnames(gamfitProp$model)) {
+      eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitProp, newdata = data.frame(',
+                              xName, ' = gamfitProp$model$', xName, ", gender = 'F', age = median(gamfitProp$model$age),
+            high_vent_proportion = median(gamfitProp$model$high_vent_proportion)
+          ), type = 'link', se.fit = T)"), collapse = "")))  
+    } else {
     eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitProp, newdata = data.frame(',
                               xName, ' = gamfitProp$model$', xName, ", gender = 'F', age = median(gamfitProp$model$age)), type = 'link', se.fit = T)"), collapse = "")))
-
+    }
+    
+    
   
   # We have to use the data on which GAM was fit for confidence region as the GAM does not provide standard errors for 'new' input
   eval(parse(text = paste0('xx <- gamfitProp$model$', xName)))
@@ -667,15 +762,15 @@ gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_
 summary(gamfitProp_type)
 gam_plot(gamfitProp_type, main = "Supplementary oxygen")
 
-gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial)
 summary(gamfitProp_type)
 gam_plot(gamfitProp_type, main = "Mechanical ventilation")
 
-gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type == 3,], family = binomial)
 summary(gamfitProp_type)
 gam_plot(gamfitProp_type, main = "Noninvasive ventilation")
 
-gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitProp_type <- gam(mortality_in_ICU ~ s(prop)+gender+s(age) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type == 4,], family = binomial)
 summary(gamfitProp_type)
 gam_plot(gamfitProp_type, main = "Invasive ventilation")
 ```
