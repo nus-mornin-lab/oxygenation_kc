@@ -1,4 +1,4 @@
-run_query('''-- choose ventilation records recorded in first 3 days
+-- choose ventilation records recorded in first 3 days
 -- and if the endtime exceeds ICU intime + 24 hours, change the endtime to 'intime + 24 hours'
 WITH vent_cohort AS (
  SELECT vd.icustay_id
@@ -8,15 +8,15 @@ WITH vent_cohort AS (
          THEN DATETIME_ADD(icud.intime, INTERVAL 24 HOUR)
          ELSE vd.endtime
      END AS endtime
- FROM `physionet-data.mimiciii_clinical.icustay_detail` icud
-    LEFT JOIN `physionet-data.mimiciii_clinical.ventdurations` vd
+ FROM `oxygenators-209612.mimiciii_clinical.icustay_detail` icud
+    LEFT JOIN `oxygenators-209612.mimiciii_clinical.ventdurations` vd
     ON vd.icustay_id = icud.icustay_id
  WHERE vd.starttime BETWEEN icud.intime AND DATETIME_ADD(icud.intime, INTERVAL 1 day)
 )
 , weight AS (
 SELECT icustay_id
     , AVG(weight) AS weight
- FROM `physionet-data.mimiciii_clinical.weightdurations`
+ FROM `oxygenators-209612.mimiciii_clinical.weightdurations`
  GROUP BY icustay_id
 )
  , tidal AS (
@@ -24,7 +24,7 @@ SELECT ce.icustay_id
     , safe_CAST(ce.value as FLOAT64) /wt.weight AS tidal_volume_per_weight
     --, ce.valueuom
     --, echo.weight
- FROM `physionet-data.mimiciii_clinical.chartevents` ce
+ FROM `oxygenators-209612.mimiciii_clinical.chartevents` ce
  LEFT JOIN weight wt
     ON wt.icustay_id = ce.icustay_id
  LEFT JOIN vent_cohort vc
@@ -58,4 +58,4 @@ SELECT icustay_id
    , total_count
     , tidal_high_count/total_count AS tidal_high_count2
  FROM tidal_risk
- ORDER BY tidal_high_count DESC'''
+ ORDER BY tidal_high_count DESC

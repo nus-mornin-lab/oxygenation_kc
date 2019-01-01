@@ -16,9 +16,9 @@ WITH intake_im AS (
 
                 ELSE im.totalamount END AS amount
 
-    FROM `physionet-data.mimiciii_clinical.icustay_detail` AS afc
+    FROM `oxygenators-209612.mimiciii_clinical.icustay_detail` AS afc
 
-         LEFT JOIN `physionet-data.mimiciii_clinical.inputevents_mv` AS im
+         LEFT JOIN `oxygenators-209612.mimiciii_clinical.inputevents_mv` AS im
 
           ON im.icustay_id = afc.icustay_id
 
@@ -50,9 +50,9 @@ WITH intake_im AS (
 
                               ELSE ic.amount END AS amount
 
-    FROM `physionet-data.mimiciii_clinical.icustay_detail` afc
+    FROM `oxygenators-209612.mimiciii_clinical.icustay_detail` afc
 
-         LEFT JOIN `physionet-data.mimiciii_clinical.inputevents_cv` ic
+         LEFT JOIN `oxygenators-209612.mimiciii_clinical.inputevents_cv` ic
 
            ON ic.icustay_id = afc.icustay_id
 
@@ -78,13 +78,13 @@ WITH intake_im AS (
 
        , sum(value) AS output_fluid
 
-  FROM `physionet-data.mimiciii_clinical.icustay_detail` afc
+  FROM `oxygenators-209612.mimiciii_clinical.icustay_detail` afc
 
-       LEFT JOIN `physionet-data.mimiciii_clinical.outputevents` oe
+       LEFT JOIN `oxygenators-209612.mimiciii_clinical.outputevents` oe
 
        ON afc.icustay_id = oe.icustay_id
 
-       LEFT JOIN `physionet-data.mimiciii_clinical.d_items` di
+       LEFT JOIN `oxygenators-209612.mimiciii_clinical.d_items` di
 
        ON di.itemid = oe.itemid
 

@@ -3,8 +3,8 @@ SELECT
 icd.subject_id,
 pat.icustay_id,
 SAFE_CAST(SUBSTR(icd.icd9_code, 0, 3) as numeric) AS icd_num
-FROM `physionet-data.mimiciii_clinical.diagnoses_icd` AS icd
-INNER JOIN `nus-datathon-2018-team-01.oxygenation.patient_cohort` AS pat
+FROM `oxygenators-209612.mimiciii_clinical.diagnoses_icd` AS icd
+INNER JOIN `oxygenators-209612.mimiciii_clinical.patient_cohort` AS pat
   ON pat.subject_id = icd.subject_id)
 SELECT
 icd_presence.subject_id,
