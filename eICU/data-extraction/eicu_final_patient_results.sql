@@ -98,6 +98,8 @@ SELECT
   pat.uniquepid AS patient_ID,
   pat.patientunitstayid AS icustay_id,
   SAFE_CAST(REGEXP_EXTRACT(pat.age, r"[0-9]+") as FLOAT64) AS age,
+  pat.admissionHeight AS height,
+  pat.admissionWeight AS weight,
 --  pat.hospitaladmitoffset AS hospitaladmitoffset,
   pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay,
   pat.hospitalid AS hospital_id,
