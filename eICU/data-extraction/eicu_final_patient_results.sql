@@ -6,9 +6,6 @@ SELECT * FROM `oxygenators-209612.eicu.patient`),
 diag AS (
 SELECT * FROM `oxygenators-209612.eicu.diagnosis`),
 
-chart AS (
-SELECT * FROM `oxygenators-209612.eicu.nursecharting`),
-
 apsiii_raw AS (
 SELECT * FROM `oxygenators-209612.eicu.apachepatientresult`),
 
@@ -18,9 +15,6 @@ patientunitstayid,
 intakeoutputoffset,
 nettotal
 FROM `oxygenators-209612.eicu.intakeoutput`),
-
-respchart AS (
-SELECT * FROM `oxygenators-209612.eicu.respiratorycharting`),
 
 sofa_results AS (
 SELECT * FROM `oxygenators-209612.eicu.sofa_results`),
