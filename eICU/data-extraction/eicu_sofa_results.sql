@@ -453,7 +453,7 @@ where (lower(physicalexampath) like '%gcs/eyes%'
 or lower(physicalexampath) like '%gcs/verbal%'
 or lower(physicalexampath) like '%gcs/motor%')
 and physicalexamoffset between -1440 and 1440
-group by patientunitstayid, physicalexamoffset
+group by patientunitstayid--, physicalexamoffset
 ), t2 as
 (
 select pt.patientunitstayid,
