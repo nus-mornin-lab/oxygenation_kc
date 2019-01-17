@@ -6,9 +6,6 @@ SELECT * FROM `oxygenators-209612.eicu.patient`),
 diag AS (
 SELECT * FROM `oxygenators-209612.eicu.diagnosis`),
 
-chart AS (
-SELECT * FROM `oxygenators-209612.eicu.nursecharting`),
-
 apsiii_raw AS (
 SELECT * FROM `oxygenators-209612.eicu.apachepatientresult`),
 
@@ -18,9 +15,6 @@ patientunitstayid,
 intakeoutputoffset,
 nettotal
 FROM `oxygenators-209612.eicu.intakeoutput`),
-
-respchart AS (
-SELECT * FROM `oxygenators-209612.eicu.respiratorycharting`),
 
 sofa_results AS (
 SELECT * FROM `oxygenators-209612.eicu.sofa_results`),
@@ -98,6 +92,8 @@ SELECT
   pat.uniquepid AS patient_ID,
   pat.patientunitstayid AS icustay_id,
   SAFE_CAST(REGEXP_EXTRACT(pat.age, r"[0-9]+") as FLOAT64) AS age,
+  pat.admissionHeight AS height,
+  pat.admissionWeight AS weight,
 --  pat.hospitaladmitoffset AS hospitaladmitoffset,
   pat.unitdischargeoffset / (24 * 60) AS icu_length_of_stay,
   pat.hospitalid AS hospital_id,
