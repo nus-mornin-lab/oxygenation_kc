@@ -18,8 +18,7 @@ LOWER(nursingchartvalue) IN (
 'bi-pap',
 'cpap',
 'ambubag',
-'niv',
-'face mask'
+'niv'
 )
 OR LOWER(nursingchartvalue) LIKE '%bipap%'
 )
@@ -59,7 +58,8 @@ LOWER(nursingchartvalue) IN (
 'aerosol mask',
 'venturi mask',
 'cool aerosol mask',
-'simple mask'
+'simple mask',
+'face mask'
 )
 OR LOWER(nursingchartvalue) LIKE '%nasal cannula%'
 OR LOWER(nursingchartvalue) LIKE '%non-rebreather%'
@@ -98,8 +98,7 @@ LOWER(nursingchartvalue) IN (
 'bi-pap',
 'cpap',
 'ambubag',
-'niv',
-'face mask'
+'niv'
 )
 OR LOWER(nursingchartvalue) LIKE '%bipap%'
 )
@@ -139,7 +138,8 @@ LOWER(nursingchartvalue) IN (
 'aerosol mask',
 'venturi mask',
 'cool aerosol mask',
-'simple mask'
+'simple mask',
+'face mask'
 )
 OR LOWER(nursingchartvalue) LIKE '%nasal cannula%'
 OR LOWER(nursingchartvalue) LIKE '%non-rebreather%'
@@ -180,8 +180,7 @@ LOWER(respchartvalue) IN (
 'bi-pap',
 'cpap',
 'ambubag',
-'niv',
-'face mask'
+'niv'
 )
 OR LOWER(respchartvalue) LIKE '%bipap%'
 THEN 3
@@ -217,7 +216,8 @@ LOWER(respchartvalue) IN (
 'aerosol mask',
 'venturi mask',
 'cool aerosol mask',
-'simple mask'
+'simple mask',
+'face mask'
 )
 OR LOWER(respchartvalue) LIKE '%nasal cannula%'
 OR LOWER(respchartvalue) LIKE '%non-rebreather%'
@@ -254,8 +254,7 @@ LOWER(respchartvalue) IN (
 'bi-pap',
 'cpap',
 'ambubag',
-'niv',
-'face mask'
+'niv'
 )
 OR LOWER(respchartvalue) LIKE '%bipap%'
 
@@ -291,7 +290,8 @@ LOWER(respchartvalue) IN (
 'aerosol mask',
 'venturi mask',
 'cool aerosol mask',
-'simple mask'
+'simple mask',
+'face mask'
 )
 OR LOWER(respchartvalue) LIKE '%nasal cannula%'
 OR LOWER(respchartvalue) LIKE '%non-rebreather%'
