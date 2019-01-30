@@ -1,7 +1,7 @@
 ---
 title: Oxygen project using eICU data
 author: Willem van den Boom
-date: December 9, 2018
+date: January 28, 2019
 output:
   html_document: default
 editor_options:
@@ -50,13 +50,13 @@ SELECT * FROM eicu.final_measurement_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save(patient, O2measurement, file = "RData/eICU_data_analysis_v7_checkpoint1.RData")
+save(patient, O2measurement, file = "RData/eICU_data_analysis_v8_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/eICU_data_analysis_v7_checkpoint1.RData")
+load("RData/eICU_data_analysis_v8_checkpoint1.RData")
 ```
 
 
@@ -211,7 +211,7 @@ SELECT * FROM eicu.oxygen_therapy_treatment
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v7_checkpoint_vent.RData")
+save.image(file = "RData/eICU_data_analysis_v8_checkpoint_vent.RData")
 ```
 
 Oxygen flows and respiratorycharting entries are usually recorded every 60 minutes and oxygen administration devices mostly in at most 2 hour intervals but we allow for gaps of up to 24*60 minutes.
@@ -280,11 +280,11 @@ patient$vent_end <- patient$vent_end + 60
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v7_checkpoint_vent2.RData")
+save.image(file = "RData/eICU_data_analysis_v8_checkpoint_vent2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v7_checkpoint_vent2.RData")
+load(file = "RData/eICU_data_analysis_v8_checkpoint_vent2.RData")
 ```
 
 ```{r}
@@ -353,11 +353,11 @@ rm(pb, i, index, tmp_IDs, n, ind)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v7_checkpoint_vent2_2.RData")
+save.image(file = "RData/eICU_data_analysis_v8_checkpoint_vent2_2.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v7_checkpoint_vent2_2.RData")
+load(file = "RData/eICU_data_analysis_v8_checkpoint_vent2_2.RData")
 ```
 
 ```{r}
@@ -416,11 +416,11 @@ rm(i, id, ind, n, pb, tidal_volume, tmp, tmp_TV)
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v7_checkpoint_vent2_3.RData")
+save.image(file = "RData/eICU_data_analysis_v8_checkpoint_vent2_3.RData")
 ```
 
 ```{r include=FALSE, eval=TRUE}
-load(file = "RData/eICU_data_analysis_v7_checkpoint_vent2_3.RData")
+load(file = "RData/eICU_data_analysis_v8_checkpoint_vent2_3.RData")
 ```
 
 ```{r}
@@ -504,7 +504,7 @@ cat("\nPatients with too few measurements:", sum(delete), "out of", nrow(patient
 patient_subset <- patient_subset[!delete,]
 
 
-### We do not subset by `high_vent_proportion` since this is not recorded for those on supplementary oxygen.
+### We do not subset by `high_vent_proportion` since this is not recorded for those on supplemental oxygen.
 ### Tidal volume is also often not recorded for those on noninvasive ventilation.
 table(is.na(patient_subset$high_vent_proportion), patient_subset$oxygen_therapy_type)
 
@@ -515,7 +515,7 @@ summary(as.factor(patient_subset$oxygen_therapy_type))
 sum(tmp <- is.na(patient_subset$high_vent_proportion) & patient_subset$oxygen_therapy_type >= 2)
 
 
-cat("\nCases with supplementary oxygen selected:", sum(patient_subset$oxygen_therapy_type == 1) )
+cat("\nCases with supplemental oxygen selected:", sum(patient_subset$oxygen_therapy_type == 1) )
 
 cat("\nCases with mechanical ventilation selected:", sum(patient_subset$oxygen_therapy_type >= 2 & !tmp) )
 
@@ -561,20 +561,21 @@ summary(patient_subset[,tmp])
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/eICU_data_analysis_v7_checkpoint_vent3.RData")
+save.image(file = "RData/eICU_data_analysis_v8_checkpoint_vent3.RData")
 ```
 
 
 # Compute summaries of oxygen measurements
 
-We compute the median oxygen level and the proportion of measurements within 94% to 97% oxygen saturation.
+We compute the median oxygen level and the proportion of measurements below 94% and proportion above 97% oxygen saturation.
 We do this after subset selection as it is much faster to compute these only for the subset of interest.
 
 We currently ignore the time aspect of the measurements. However, one should probably take into account that certain measurements are less spread out than others.
 
 ```{r oxygenSummaries, eval=FALSE}
 patient_subset$median <- NA
-patient_subset$prop <- NA
+patient_subset$propBelow <- NA
+patient_subset$propAbove <- NA
 n <- nrow(patient_subset)
 pb <- txtProgressBar(max = n, style = 3)
 
@@ -586,25 +587,49 @@ for(i in 1:n) {
   ]
   
   patient_subset$median[i] <- median(tmp)
-  patient_subset$prop[i] <- mean(tmp >= 94 & tmp <= 97)
+  patient_subset$propBelow[i] <- mean(tmp < 94)
+  patient_subset$propAbove[i] <- mean(tmp > 97)
   
   setTxtProgressBar(pb, i)
 }
 close(pb)
 rm(i,tmp,pb,O2measurement)
 
+# Proportion of measurements from 94 to 97
+patient_subset$prop <- 1 - patient_subset$propBelow - patient_subset$propAbove
+
 summary(patient_subset$median)
 summary(patient_subset$prop)
 ```
 
+
+
+```{r, include = FALSE, eval = FALSE}
+# We only keep hospitals with at least 2 cases
+cat("\n Number of hospitals in current subset:", length(unique(patient_subset$hospital_id)))
+
+tmp <- table(patient_subset$hospital_id)
+cat("\n Number of hospitals with at least 2 patients:", sum(tmp >= 2))
+
+delete <- patient_subset$hospital_id %in% as.numeric(names(tmp[tmp < 2]))
+patient_subset <- patient_subset[!delete,]
+patient_subset$hospital_id = as.factor(patient_subset$hospital_id)
+
+cat("\n Number of patients in selected subset:", nrow(patient_subset))
+
+rm(tmp, delete)
+```
+
+
+
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/eICU_data_analysis_v7_checkpoint2.RData")
+save.image("RData/eICU_data_analysis_v8_checkpoint2.RData")
 ```
 
 ```{r loadProcessedData, include=FALSE, eval=TRUE}
 # Since computing the oxygen summaries takes a long time,
 # I load the results from an RData file.
-load("RData/eICU_data_analysis_v7_checkpoint2.RData")
+load("RData/eICU_data_analysis_v8_checkpoint2.RData")
 ```
 
 
@@ -710,28 +735,39 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
 
 
 
-gam_plotProp <- function(gamfitProp, main = "Effect of treatment regime", yRange = c(0, .3)){
+gam_plotProp <- function(gamfitProp, main = "Effect of treatment regime", yRange = c(0, .3), add = FALSE, col = "black"){
   print(paste("Number of cases:", summary(gamfitProp)$n))
   
-xRange = c(0, max(patient_subset$prop, na.rm= TRUE))
-
-xlab <- expression("Proportion of time with an SpO"[2]*" within 94% to 97%")
-ylab <- "Probability of ICU mortality" 
-
-xName <- "prop"
-
+  xName <- colnames(gamfitProp$model)[grep("prop", colnames(gamfitProp$model))]
+  
+  xRange = c(0, max(patient_subset[,xName], na.rm= TRUE))
+  
+  
+  if(xName == "propBelow") {
+    xlab <- expression("Proportion of SpO"[2]*" below 94% (black) or above 97% (blue)")
+    #xlab <- expression("Proportion of  SpO"[2]*" measurements below 94%")
+  } else if(xName == "propAbove") {
+    xlab <- expression("Proportion of SpO"[2]*" measurements above 97%")
+  } else {
+    xlab <- expression("Proportion of SpO"[2]*" measurements within 94% to 97%")
+  }
+  
+  ylab <- "Probability of ICU mortality" 
+  
+  if(!add) {
     plot(1, type = 'n', xlim = xRange, ylim = yRange,
-         ylab = ylab,
-         xlab = xlab, main = main, yaxs = 'i', xaxs = 'i', yaxt = 'n', xaxt = 'n')
-    
-    att <- pretty(yRange)
-if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
-  axis(2, at = att, lab = paste0(sprintf('%.1f', att*100), '%'), las = TRUE)
-} else axis(2, at = att, lab = paste0(att*100, '%'), las = TRUE)
-    
-    att <- pretty(xRange)
-    axis(1, at = att, lab = paste0(att*100, '%'), las = TRUE)
-    
+           ylab = ylab,
+           xlab = xlab, main = main, yaxs = 'i', xaxs = 'i', yaxt = 'n', xaxt = 'n')
+      
+      att <- pretty(yRange)
+    if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
+      axis(2, at = att, lab = paste0(sprintf('%.1f', att*100), '%'), las = TRUE)
+    } else axis(2, at = att, lab = paste0(att*100, '%'), las = TRUE)
+      
+      att <- pretty(xRange)
+      axis(1, at = att, lab = paste0(att*100, '%'), las = TRUE)
+  
+  }
     
     eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitProp, newdata = data.frame(',
                               xName, ' = gamfitProp$model$', xName, ", gender = 'F', age = median(gamfitProp$model$age), bmi = median(gamfitProp$model$bmi),",
@@ -758,19 +794,21 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     lcl <- logistic(predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index])
     ucl <- logistic(predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index])
     
-    lines(x = xx, y = lcl, lty = 2, lwd = 2)
-    lines(x = xx, y = ucl, lty = 2, lwd = 2)
-    lines(xx, logistic(predictionsPlusCI$fit[ord.index]), lwd = 3)
+    lines(x = xx, y = lcl, lty = 2, lwd = 2, col = col)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
+    lines(xx, logistic(predictionsPlusCI$fit[ord.index]), lwd = 3, col = col)
   } else {
     lcl <- predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index]
     ucl <- predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index]
     
-    lines(x = xx, y = lcl, lty = 2, lwd = 2)
-    lines(x = xx, y = ucl, lty = 2, lwd = 2)
-    lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
+    lines(x = xx, y = lcl, lty = 2, lwd = 2, col = col)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
+    lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3, col = col)
   }
 }
 ```
+
+
 
 
 
@@ -779,21 +817,18 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
 We fit a generalized additive model (GAM) to check for the effect of the median oxygen saturation. GAMs are regression models that allow for nonlinear effects of the predictors.
 We add gender and age as predictors to control for them. We also control for hospital but since there are so many hospitals, we add it as a random effect.
 
+
 ```{r gamfitMed}
-pdf(file = "Figures/med_v7.pdf", width = plot_width,
-    height = 6, pointsize = point_size, family = font)
-par(mfrow = c(2,1), cex = 1)
-
-gamfitMed_supp <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitMed_supp)
-gam_plotMed(gamfitMed_supp, main = "Supplementary oxygen")
-
-gamfitMed_vent <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitMed_vent)
-gam_plotMed(gamfitMed_vent, main = "Mechanical ventilation")
+pdf(file = "Figures/med_v8.pdf", width = plot_width,
+    height = 6/2, pointsize = point_size, family = font)
+#par(mfrow = c(2,1), cex = 1)
+gamfitMed <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+#gamfitMed <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial)
+gam_plotMed(gamfitMed, main = "", yRange = c(0, .3))
 
 dev.off()
 ```
+
 
 
 
@@ -801,18 +836,25 @@ dev.off()
 
 We now fit a GAM with the proportion of measurements within a range instead of the median of the measurements.
 
+
 ```{r gamfitProp}
-pdf(file = "Figures/prop_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
-gamfitProp_supp <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitProp_supp)
-gam_plotProp(gamfitProp_supp, main = "Supplementary oxygen")
+gamfitProp <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp)
+gam_plotProp(gamfitProp, main = "Adherence to oxygen saturation target")
 
-gamfitProp_vent <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
-summary(gamfitProp_vent)
-gam_plotProp(gamfitProp_vent, main = "Mechanical ventilation")
+
+gamfitProp_below <- gamm(mortality_in_ICU ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp_below)
+gam_plotProp(gamfitProp_below, main = "Proportion above or below the range")
+
+gamfitProp_above <- gamm(mortality_in_ICU ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp_above)
+gam_plotProp(gamfitProp_above, main = "Proportion below", col = "blue", add = TRUE)
+
 
 dev.off()
 ```
@@ -861,7 +903,8 @@ computeCI <- function(gam_fit, data) {
   )
   
   } else {
-    tmp <- or_gam(data = data, model = gam_fit, pred = "prop", values = c(.8, .4))
+    xName <- colnames(gam_fit$model)[grep("prop", colnames(gam_fit$model))]
+    tmp <- or_gam(data = data, model = gam_fit, pred = xName, values = c(.8, .4))
 
   cat(
   "The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is ",
@@ -880,11 +923,9 @@ computeCI <- function(gam_fit, data) {
 ```
 
 ```{r}
-computeCI(gamfitMed_supp, data = patient_subset[patient_subset$oxygen_therapy_type == 1,])
-computeCI(gamfitMed_vent, data = patient_subset[patient_subset$oxygen_therapy_type >= 2 & !is.na(patient_subset$high_vent_proportion),])
-
-computeCI(gamfitProp_supp, data = patient_subset[patient_subset$oxygen_therapy_type == 1,])
-computeCI(gamfitProp_vent, data = patient_subset[patient_subset$oxygen_therapy_type >= 2 & !is.na(patient_subset$high_vent_proportion),])
+computeCI(gamfitMed, data = patient_subset)
+computeCI(gamfitProp, data = patient_subset)
+computeCI(gamfitProp_above, data = patient_subset)
 ```
 
 
@@ -892,22 +933,14 @@ computeCI(gamfitProp_vent, data = patient_subset[patient_subset$oxygen_therapy_t
 Same as above but now without adjusting for covariates
 
 ```{r}
-data_tmp <- patient_subset[patient_subset$oxygen_therapy_type == 1,]
-tmp <- gam(mortality_in_ICU ~ s(median), data = data_tmp, family = binomial)
-computeCI(tmp, data = data_tmp)
+tmp <- gam(mortality_in_ICU ~ s(median), data = patient_subset, family = binomial)
+computeCI(tmp, data = patient_subset)
 
-data_tmp <- patient_subset[patient_subset$oxygen_therapy_type >= 2 & !is.na(patient_subset$high_vent_proportion),]
-tmp <- gam(mortality_in_ICU ~ s(median), data = data_tmp, family = binomial)
-computeCI(tmp, data = data_tmp)
+tmp <- gam(mortality_in_ICU ~ s(prop), data = patient_subset, family = binomial)
+computeCI(tmp, data = patient_subset)
 
-
-data_tmp <- patient_subset[patient_subset$oxygen_therapy_type == 1,]
-tmp <- gam(mortality_in_ICU ~ s(prop), data = data_tmp, family = binomial)
-computeCI(tmp, data = data_tmp)
-
-data_tmp <- patient_subset[patient_subset$oxygen_therapy_type >= 2 & !is.na(patient_subset$high_vent_proportion),]
-tmp <- gam(mortality_in_ICU ~ s(prop), data = data_tmp, family = binomial)
-computeCI(tmp, data = data_tmp)
+tmp <- gam(mortality_in_ICU ~ s(propAbove), data = patient_subset, family = binomial)
+computeCI(tmp, data = patient_subset)
 ```
 
 
@@ -917,31 +950,54 @@ computeCI(tmp, data = data_tmp)
 
 Let us now create additional plots for the supplement. First, repeat the median and proportion plots without subsetting by oxygen therapy type.
 
-```{r}
-pdf(file = "Figures/all_v7.pdf", width = plot_width,
+
+```{r gamfitProp_vent_type}
+pdf(file = "Figures/prop_vent_type_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
-#gamfitMed <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(niterEM=10))$gam # Fails to converge due to lack of effect of hospital_id. Therefore, we fit it without the random effect.
-gamfitMed <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial)
-gam_plotMed(gamfitMed, main = "Median oxygen saturation")
 
-gamfitProp <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
-gam_plotProp(gamfitProp, main = "Adherence to oxygen goal")
+gamfitProp_supp <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp_supp)
+gam_plotProp(gamfitProp_supp, main = "Supplemental oxygen")
+
+gamfitProp_vent <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitProp_vent)
+gam_plotProp(gamfitProp_vent, main = "Mechanical ventilation")
+
+
+dev.off()
+```
+
+
+```{r gamfitMed_vent_type}
+pdf(file = "Figures/med_vent_type_v8.pdf", width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+par(mfrow = c(2,1), cex = 1)
+
+gamfitMed_supp <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitMed_supp)
+gam_plotMed(gamfitMed_supp, main = "Supplemental oxygen")
+
+gamfitMed_vent <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
+summary(gamfitMed_vent)
+gam_plotMed(gamfitMed_vent, main = "Mechanical ventilation")
 
 dev.off()
 ```
 
 
 
+
+
 APACHE score instead of SOFA score as control.
 
 ```{r}
-pdf(file = "Figures/med_APACHE_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_APACHE_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
 gamfitMed_type <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
-gam_plotMed(gamfitMed_type, main = "Supplementary oxygen")
+gam_plotMed(gamfitMed_type, main = "Supplemental oxygen")
 
 gamfitMed_type <- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(apsiii) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
 gam_plotMed(gamfitMed_type, main = "Mechanical ventilation")
@@ -949,12 +1005,12 @@ gam_plotMed(gamfitMed_type, main = "Mechanical ventilation")
 dev.off()
 
 
-pdf(file = "Figures/prop_APACHE_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_APACHE_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
 gamfitProp_type <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = patient_subset[patient_subset$oxygen_therapy_type == 1,], family = binomial, random = list(hospital_id = ~ 1))$gam
-gam_plotProp(gamfitProp_type, main = "Supplementary oxygen")
+gam_plotProp(gamfitProp_type, main = "Supplemental oxygen")
 
 gamfitProp_type <- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii) + s(high_vent_proportion), data = patient_subset[patient_subset$oxygen_therapy_type >= 2,], family = binomial, random = list(hospital_id = ~ 1))$gam
 gam_plotProp(gamfitProp_type, main = "Mechanical ventilation")
@@ -968,7 +1024,7 @@ dev.off()
 Split out mechanical ventilation into noninvasive and invasive ventilation.
 
 ```{r}
-pdf(file = "Figures/med_vent_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_vent_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -984,7 +1040,7 @@ gam_plotMed(gamfitMed_type, main = "Invasive ventilation")
 dev.off()
 
 
-pdf(file = "Figures/prop_vent_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_vent_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1013,7 +1069,7 @@ levels(patient_subset$unit_type)[levels(patient_subset$unit_type) == "SICU"] <- 
 n_type <- nlevels(patient_subset$unit_type)
 
 
-pdf(file = "Figures/med_ICU_type_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_ICU_type_v8.pdf", width = plot_width,
     height = 6 * n_type/2, pointsize = point_size, family = font)
 par(mfrow = c(n_type,1), cex = 1)
 
@@ -1025,7 +1081,7 @@ for(ICU_type in levels(patient_subset$unit_type)) {
 dev.off()
 
 
-pdf(file = "Figures/prop_ICU_type_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_ICU_type_v8.pdf", width = plot_width,
     height = 6 * n_type/2, pointsize = point_size, family = font)
 par(mfrow = c(n_type,1), cex = 1)
 
@@ -1043,7 +1099,7 @@ Split up by whether sepsis was present. Do not add random effect of hospital and
 For conciseness, all further comparisons are also done without splitting out oxygen therapy type or controlling for hospital.
 
 ```{r sepsis}
-pdf(file = "Figures/med_sepsis_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_sepsis_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1056,7 +1112,7 @@ gam_plotMed(gamfitMed_type, main = "Without sepsis")
 dev.off()
 
 
-pdf(file = "Figures/prop_sepsis_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_sepsis_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1072,7 +1128,7 @@ dev.off()
 
 
 ```{r atrial_fibrillation}
-pdf(file = "Figures/med_AF_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_AF_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1085,7 +1141,7 @@ gam_plotMed(gamfitMed_type, main = "Without atrial fibrillation")
 dev.off()
 
 
-pdf(file = "Figures/prop_AF_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_AF_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1101,7 +1157,7 @@ dev.off()
 
 
 ```{r chronic_kidney_disease}
-pdf(file = "Figures/med_CKD_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_CKD_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1114,7 +1170,7 @@ gam_plotMed(gamfitMed_type, main = "Without chronic kidney disease")
 dev.off()
 
 
-pdf(file = "Figures/prop_CKD_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_CKD_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1130,7 +1186,7 @@ dev.off()
 
 
 ```{r congestive_heart_failure}
-pdf(file = "Figures/med_CHF_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_CHF_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1143,7 +1199,7 @@ gam_plotMed(gamfitMed_type, main = "Without congestive heart failure")
 dev.off()
 
 
-pdf(file = "Figures/prop_CHF_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_CHF_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1165,7 +1221,7 @@ summary(patient_subset$CAD)
 
 
 ```{r COPD}
-pdf(file = "Figures/med_COPD_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_COPD_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1178,7 +1234,7 @@ gam_plotMed(gamfitMed_type, main = "Without COPD")
 dev.off()
 
 
-pdf(file = "Figures/prop_COPD_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_COPD_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1193,7 +1249,7 @@ dev.off()
 
 
 ```{r chronic_liver_disease}
-pdf(file = "Figures/med_chronic_liver_disease_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_chronic_liver_disease_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1206,7 +1262,7 @@ gam_plotMed(gamfitMed_type, main = "Without chronic liver disease")
 dev.off()
 
 
-pdf(file = "Figures/prop_chronic_liver_disease_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_chronic_liver_disease_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1221,7 +1277,7 @@ dev.off()
 
 
 ```{r stroke}
-pdf(file = "Figures/med_stroke_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_stroke_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1234,7 +1290,7 @@ gam_plotMed(gamfitMed_type, main = "Without stroke")
 dev.off()
 
 
-pdf(file = "Figures/prop_stroke_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_stroke_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1249,7 +1305,7 @@ dev.off()
 
 
 ```{r cancer}
-pdf(file = "Figures/med_cancer_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_cancer_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1262,7 +1318,7 @@ gam_plotMed(gamfitMed, main = "Without cancer")
 dev.off()
 
 
-pdf(file = "Figures/prop_cancer_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_cancer_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1278,7 +1334,7 @@ dev.off()
 
 
 ```{r diabetes}
-pdf(file = "Figures/med_diabetes_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_diabetes_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1291,7 +1347,7 @@ gam_plotMed(gamfitMed, main = "Without diabetes")
 dev.off()
 
 
-pdf(file = "Figures/prop_diabetes_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_diabetes_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1306,7 +1362,7 @@ dev.off()
 
 
 ```{r hypertension}
-pdf(file = "Figures/med_hypertension_v7.pdf", width = plot_width,
+pdf(file = "Figures/med_hypertension_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
@@ -1319,7 +1375,7 @@ gam_plotMed(gamfitMed, main = "Without hypertension")
 dev.off()
 
 
-pdf(file = "Figures/prop_hypertension_v7.pdf", width = plot_width,
+pdf(file = "Figures/prop_hypertension_v8.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfrow = c(2,1), cex = 1)
 
