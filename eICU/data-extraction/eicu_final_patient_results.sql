@@ -79,7 +79,25 @@ SELECT
 intakeoutput.patientunitstayid,
 SUM(intakeoutput.nettotal) as fluid_balance
 FROM intakeoutput
-GROUP BY intakeoutput.patientunitstayid)
+GROUP BY intakeoutput.patientunitstayid),
+
+
+
+end_of_life AS (
+-- Per https://github.com/MIT-LCP/eicu-code/issues/65
+SELECT DISTINCT patientunitstayid
+FROM `oxygenators-209612.eicu.careplaneol`
+WHERE activeupondischarge
+
+UNION DISTINCT
+
+SELECT DISTINCT patientunitstayid
+FROM `oxygenators-209612.eicu.careplangeneral`
+WHERE cplitemvalue = "No CPR"
+OR cplitemvalue = "Do not resuscitate"
+OR cplitemvalue = "Comfort measures only"
+OR cplitemvalue = "End of life"
+)
 
 
 
@@ -102,7 +120,8 @@ SELECT
   icd_presence.* EXCEPT(patientunitstayid),
   apsiii.* EXCEPT(patientunitstayid),
   fluid_balance.* EXCEPT(patientunitstayid),
-  sofa_results.* EXCEPT(patientunitstayid)
+  sofa_results.* EXCEPT(patientunitstayid),
+  IF(end_of_life.patientunitstayid IS NULL, FALSE, TRUE) as end_of_life
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
@@ -112,3 +131,5 @@ LEFT JOIN fluid_balance
   ON pat.patientunitstayid = fluid_balance.patientunitstayid
 LEFT JOIN sofa_results
   ON pat.patientunitstayid = sofa_results.patientunitstayid
+LEFT JOIN end_of_life
+  ON pat.patientunitstayid = end_of_life.patientunitstayid
