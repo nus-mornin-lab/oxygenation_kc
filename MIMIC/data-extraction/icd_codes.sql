@@ -1,7 +1,8 @@
 WITH icd_presence AS (
 SELECT
 icd.hadm_id,
-SAFE_CAST(SUBSTR(icd.icd9_code, 0, 3) as numeric) AS icd_num
+SAFE_CAST(SUBSTR(icd.icd9_code, 0, 3) as INT64) AS icd_num,
+icd.icd9_code AS icd_num_string
 FROM `oxygenators-209612.mimiciii_clinical.diagnoses_icd` AS icd)
 
 
