@@ -162,8 +162,8 @@ angus.angus,
 sofa.sofa,
 fluid_balance.fluid_balance, 
 mech_vent.tidal_high_count2 as tidal_count_percentage,
-heightweight.height_first as height,
-heightweight.weight_first as weight,
+SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
+SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
 icu.first_careunit as unittype
 FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
 INNER JOIN `oxygenators-209612.mimiciii_clinical.patients` AS pat
