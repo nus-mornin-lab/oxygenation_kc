@@ -163,7 +163,8 @@ sofa.sofa,
 fluid_balance.fluid_balance, 
 mech_vent.tidal_high_count2 as tidal_count_percentage,
 heightweight.height_first as height,
-heightweight.weight_first as weight
+heightweight.weight_first as weight,
+icu.first_careunit as unittype
 FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
 INNER JOIN `oxygenators-209612.mimiciii_clinical.patients` AS pat
   ON icu.subject_id = pat.subject_id
