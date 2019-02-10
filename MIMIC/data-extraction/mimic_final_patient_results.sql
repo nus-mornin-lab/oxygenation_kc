@@ -178,7 +178,8 @@ sofa.sofa,
 mech_vent.tidal_high_count2 as tidal_count_percentage,
 SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
 SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
-icu.first_careunit as unittype
+icu.first_careunit as unittype,
+DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) AS icustay_seq -- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql
 FROM icu
 LEFT JOIN pat
   ON icu.subject_id = pat.subject_id
