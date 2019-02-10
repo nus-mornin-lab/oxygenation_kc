@@ -175,7 +175,6 @@ elix.solid_tumor,
 elix.metastatic_cancer,
 angus.angus,
 sofa.sofa,
-fluid_balance.fluid_balance, 
 mech_vent.tidal_high_count2 as tidal_count_percentage,
 SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
 SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
@@ -195,8 +194,6 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.apsiii` AS apsiii
   ON icu.icustay_id = apsiii.icustay_id
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.sofa` sofa 
   ON icu.icustay_id = SOFA.icustay_id
-LEFT JOIN `oxygenators-209612.mimiciii_clinical.fluid_balance` fluid_balance 
-  ON icu.icustay_id = fluid_balance.icustay_id
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.mechanical_ventilative_volume` mech_vent 
   ON icu.icustay_id = mech_vent.icustay_id
 LEFT JOIN heightweight
