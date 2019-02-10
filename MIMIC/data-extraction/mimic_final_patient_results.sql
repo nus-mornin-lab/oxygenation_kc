@@ -82,7 +82,7 @@ WITH FirstVRawData AS
   FROM `oxygenators-209612.mimiciii_clinical.chartevents` c
   WHERE c.valuenum   IS NOT NULL
   -- exclude rows marked as error
-  AND (NOT (c.error <> 1 OR c.error IS NULL) OR (c.error IS NULL))  --c.error IS DISTINCT FROM 1
+  AND (c.error <> 1 OR c.error IS NULL)  --c.error IS DISTINCT FROM 1
   AND ( ( c.itemid  IN (762, 763, 3723, 3580, -- Weight Kg
     3581,                                     -- Weight lb
     3582,                                     -- Weight oz
