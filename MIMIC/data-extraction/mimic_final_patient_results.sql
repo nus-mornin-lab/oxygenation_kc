@@ -130,20 +130,35 @@ SELECT f.icustay_id,
   ROUND( cast(f.height_first as numeric), 2) AS height_first,
   ROUND(cast(f.weight_first as numeric), 2) AS weight_first
 
-FROM PivotParameters f)
+FROM PivotParameters f),
 
 
 
 
--- Note that icustays has duplicate icustay_id, need to check the final
--- table has no duplicates.
+-- `patients` on our Google cloud setup has each ICU stay duplicated 7 times.
+-- We get rid of these duplicates.
+pat AS (
+	SELECT DISTINCT * FROM `oxygenators-209612.mimiciii_clinical.patients`
+),
+
+
+-- `icustays` has similar duplication, but the duplicates sometimes differ in the recorded careunit.
+-- Note that no such duplicate care units are recorded in ICUSTAYS.csv available from Physionet.
+-- We arbitrarily pick one care unit: This only affects 0.9% of ICU stays.
+icu AS (SELECT *
+FROM   (SELECT *,
+               Row_number() OVER(PARTITION BY icustay_id ORDER BY first_careunit) rn
+        FROM   `oxygenators-209612.mimiciii_clinical.icustays`)
+WHERE  rn = 1)
+
+
 
 SELECT DISTINCT
 icu.hadm_id AS HADM_id,       
 icu.icustay_id AS icustay_id,       
 icu.subject_id AS patient_ID,
 pat.gender AS gender,
-DATE_DIFF(DATE(icu.intime), DATE(pat.dob), YEAR) AS age,  
+DATE_DIFF(DATE(icu.intime), DATE(pat.dob), YEAR) AS age,
 DATETIME_DIFF(icu.outtime, icu.intime, HOUR) / 24 AS icu_length_of_stay,
 mortality_type.* EXCEPT(icustay_id),
 icd.* EXCEPT(hadm_id),
@@ -165,8 +180,8 @@ mech_vent.tidal_high_count2 as tidal_count_percentage,
 SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
 SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
 icu.first_careunit as unittype
-FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
-INNER JOIN `oxygenators-209612.mimiciii_clinical.patients` AS pat
+FROM icu
+LEFT JOIN pat
   ON icu.subject_id = pat.subject_id
 LEFT JOIN mortality_type
   ON icu.icustay_id = mortality_type.icustay_id
@@ -175,7 +190,7 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.icd_codes` AS icd
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.elixhauser_quan` AS elix
   ON icu.hadm_id = elix.hadm_id
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.angus_sepsis` AS angus
-  ON icu.hadm_id = angus.hadm_id
+ ON icu.hadm_id = angus.hadm_id
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.apsiii` AS apsiii
   ON icu.icustay_id = apsiii.icustay_id
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.sofa` sofa 
@@ -186,8 +201,3 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.mechanical_ventilative_volume` m
   ON icu.icustay_id = mech_vent.icustay_id
 LEFT JOIN heightweight
   ON icu.icustay_id = heightweight.icustay_id
-
---Use this to validate non-duplicate icustay_id
---SELECT test.icustay_id, count(test.icustay_id) as c FROM test GROUP BY test.icustay_id ORDER BY c DESC LIMIT 100
-
-
