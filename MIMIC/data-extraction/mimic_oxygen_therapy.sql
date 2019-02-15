@@ -1,57 +1,48 @@
--- This script is edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/durations/ventilation-durations.sql
--- I (Willem van den Boom) edited it such that it also records sessions of supplemental oxygen
--- and indicates whether the session was supplemental oxygen or mechanical ventilation.
+-- The table constructs start and end time of oxygen therapy sessions,
+-- along with an indicator whether supplemental oxygen, noninvasive ventilation, or invasive ventilation was involved.
 
+-- Whenever a gap of 24 hours occurs between oxygen therapy or ventilation therapy records,
+-- then we consider that a new oxygen therapy session has started.
 
--- This query extracts the duration of mechanical ventilation
--- The main goal of the query is to aggregate sequential ventilator settings
--- into single mechanical ventilation "events". The start and end time of these
--- events can then be used for various purposes: calculating the total duration
--- of mechanical ventilation, cross-checking values (e.g. PaO2:FiO2 on vent), etc
+-- This script uses oxygen therapy indicators from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/durations/ventilation-durations.sql
 
--- The query's logic is roughly:
---    1) The presence of a mechanical ventilation setting starts a new ventilation event
---    2) Any instance of a setting in the next 8 hours continues the event
---    3) Certain elements end the current ventilation event
---        a) documented extubation ends the current ventilation
---        b) initiation of non-invasive vent and/or oxygen ends the current vent
--- The ventilation events are numbered consecutively by the `num` column.
 
 
 -- First, create a temporary table to store relevant data from CHARTEVENTS.
 WITH ventsettings AS (
 select
   icustay_id, charttime
-  -- case statement determining whether it is an instance of mech vent
+  -- case statement determining what type of oxygen therapy it is.
+	-- type indicates whether the entry suggests invasive ventilation (4), noninvasive ventilation (3), either invasive or noninvasive ventilation (2), supplemental oxygen (1). If the entry does not suggest a type of oxygen therapy, type = 0.
   , max(
     case
-      when itemid is null or value is null then 0 -- can't have null values
-      when itemid = 720 and value != 'Other/Remarks' THEN 1  -- VentTypeRecorded
-      when itemid = 223848 and value != 'Other' THEN 1
-      when itemid = 223849 then 1 -- ventilator mode
-      when itemid = 467 and value = 'Ventilator' THEN 1 -- O2 delivery device == ventilator
-      when itemid in
-        (
-        445, 448, 449, 450, 1340, 1486, 1600, 224687 -- minute volume
-        , 639, 654, 681, 682, 683, 684,224685,224684,224686 -- tidal volume
+      when itemid = 720 and value != 'Other/Remarks' THEN 2  -- VentTypeRecorded
+      when itemid = 223848 and value != 'Other' THEN 2
+      when itemid = 223849 then 2 -- ventilator mode
+      when itemid = 467 and value = 'Ventilator' THEN 2 -- O2 delivery device == ventilator
+      when itemid in (
+		445, 448, 449, 450, 1340, 1486, 1600, 224687 -- minute volume
+		, 639, 654, 681, 682, 683, 684,224685,224684,224686 -- tidal volume
         , 218,436,535,444,459,224697,224695,224696,224746,224747 -- High/Low/Peak/Mean/Neg insp force ("RespPressure")
         , 221,1,1211,1655,2000,226873,224738,224419,224750,227187 -- Insp pressure
-        , 543 -- PlateauPressure
+	)
+	THEN 2
+	when itemid in (
+	501,502,503,224702 -- PCV
+	, 223,667,668,669,670,671,672 -- TCPCV
+	, 224701 -- PSVlevel
+	)
+	THEN 3
+      when itemid in
+        (
+ 	543 -- PlateauPressure
         , 5865,5866,224707,224709,224705,224706 -- APRV pressure
         , 60,437,505,506,686,220339,224700 -- PEEP
         , 3459 -- high pressure relief
-        , 501,502,503,224702 -- PCV
-        , 223,667,668,669,670,671,672 -- TCPCV
-        , 224701 -- PSVlevel
         )
-        THEN 1
-      else 0
-    end
-    ) as MechVent
-    , max(
-      case
-        -- initiation of oxygen therapy indicates the ventilation has ended
-        when itemid = 226732 and value in
+        THEN 4
+	-- The following are indicators of supplemental oxygen
+	when itemid = 226732 and value in
         (
           'Nasal cannula', -- 153714 observations
           'Face tent', -- 24601 observations
@@ -86,9 +77,12 @@ select
           'Heated Neb', -- 37 observations
           'Ultrasonic Neb' -- 2 observations
         ) then 1
+	-- Use of tube indicate invasive ventilation
+	when itemid = 640 and value = 'Extubated' then 4
+        when itemid = 640 and value = 'Self Extubation' then 4
       else 0
-      end
-    ) as OxygenTherapy
+    end
+    ) as type
     , max(
       case when itemid is null or value is null then 0
         -- extubated indicates ventilation event has ended
@@ -98,18 +92,11 @@ select
       end
       )
       as Extubated
-    , max(
-      case when itemid is null or value is null then 0
-        when itemid = 640 and value = 'Self Extubation' then 1
-      else 0
-      end
-      )
-      as SelfExtubated
 from `oxygenators-209612.mimiciii_clinical.chartevents` ce
 where ce.value is not null and icustay_id IS NOT NULL
 -- exclude rows marked as error
 and (ce.error <> 1 OR ce.error IS NULL)--ce.error IS DISTINCT FROM 1
-and itemid in
+and ( itemid in
 (
     -- the below are settings used to indicate ventilation
       720, 223849 -- vent mode
@@ -140,6 +127,16 @@ and itemid in
 
     -- used in both oxygen + vent calculation
     , 467 -- O2 Delivery Device
+) ) OR ( -- Fraction of inspired oxygen different from 21% indicates oxygen therapy
+	itemid in (3420, 190, 223835, 3422) AND (
+		-- valuenum is different from 21
+		valuenum > 22
+		OR valuenum < 20
+	) AND (
+		-- valuenum is different from .21
+		valuenum > .22
+		OR valuenum < .2
+	)
 )
 group by icustay_id, charttime
 UNION DISTINCT
@@ -148,10 +145,8 @@ UNION DISTINCT
 -- (extubation is always charted as ending 1 minute after it started)
 select
   icustay_id, starttime as charttime
-  , 0 as MechVent
-  , 0 as OxygenTherapy
+  , 4 as type
   , 1 as Extubated
-  , case when itemid = 225468 then 1 else 0 end as SelfExtubated
 from `oxygenators-209612.mimiciii_clinical.procedureevents_mv`
 where itemid in
 (
@@ -164,104 +159,77 @@ where itemid in
 vd0 as
 (
   select
-    icustay_id
-    -- this carries over the previous charttime which had a mechanical ventilation event
-    , case
-        when MechVent=1 then
-          LAG(CHARTTIME, 1) OVER (partition by icustay_id, MechVent order by charttime)
-	when OxygenTherapy=1 then
-          LAG(CHARTTIME, 1) OVER (partition by icustay_id, OxygenTherapy order by charttime)
-        else null
-      end as charttime_lag
-    , charttime
-    , MechVent
-    , OxygenTherapy
-    , Extubated
-    , SelfExtubated
+    *
+    -- this carries over the previous charttime which had an oxygen therapy event
+    , LAG(CHARTTIME, 1) OVER (partition by icustay_id order by charttime)
+	as charttime_lag
   from ventsettings
 )
 , vd1 as
 (
   select
       icustay_id
-      , charttime_lag
       , charttime
-      , MechVent
-      , OxygenTherapy
+      , type
       , Extubated
-      , SelfExtubated
 
-      -- if this is a mechanical ventilation or oxygen therapy event, we calculate the time since the last event
-      , case
-          -- if the current observation indicates mechanical ventilation/oxygen therapy is present
-          -- calculate the time since the last mechanical ventilation/oxygen therapy event
-          when MechVent=1 OR OxygenTherapy=1 then
-            DATETIME_DIFF(CHARTTIME, charttime_lag, HOUR)
-          else null
-        end as ventduration
-
-      , CASE WHEN OxygenTherapy=1 THEN LAG(Extubated,1)
-      OVER
-      (
-      partition by icustay_id, case when OxygenTherapy=1 or Extubated=1 then 1 else 0 end
-      order by charttime
-      )
-	ELSE LAG(Extubated,1)
-      OVER
-      (
-      partition by icustay_id, case when MechVent=1 or Extubated=1 then 1 else 0 end
-      order by charttime
-      )
-	END as ExtubatedLag
-
-      -- now we determine if the current mech vent event is a "new", i.e. they've just been intubated
-      , case
-        -- if there is an extubation flag, we mark any subsequent ventilation as a new ventilation event
-          --when Extubated = 1 then 0 -- extubation is *not* a new ventilation event, the *subsequent* row is
-          when
-            LAG(Extubated,1)
-            OVER
-            (
-            partition by icustay_id, case when MechVent=1 or OxygenTherapy=1 or Extubated=1 then 1 else 0 end
-            order by charttime
-            )
-            = 1 then 1
-            -- if there is less than 8 hours between vent settings, we do not treat this as a new ventilation event
-          when DATETIME_DIFF(CHARTTIME, charttime_lag, HOUR) > 8
-            then 1
-        else 0
-        end as newvent
-  -- use the staging table with only vent settings from chart events
-  FROM vd0 ventsettings
+      -- If the time since the last oxygen therapy event is more than 24 hours,
+	-- we consider that ventilation had ended in between.
+	-- That is, the next ventilation record corresponds to a new ventilation session.
+      , CASE
+		WHEN DATETIME_DIFF(CHARTTIME, charttime_lag, HOUR) > 24 THEN 1
+		WHEN charttime_lag IS NULL THEN 1 -- No lag can be computed for the very first record
+		ELSE 0
+	END AS newvent
+  -- use the staging table with only oxygen therapy records from chart events
+  FROM vd0
 )
 , vd2 as
 (
   select vd1.*
   -- create a cumulative sum of the instances of new ventilation
   -- this results in a monotonic integer assigned to each instance of ventilation
-  , case when MechVent=1 or OxygenTherapy=1 or Extubated = 1 then
-      SUM( newvent )
+  , SUM( newvent )
       OVER ( partition by icustay_id order by charttime )
-    else null end
     as ventnum
-  --- now we convert CHARTTIME of ventilator settings into durations
   from vd1
 )
--- create the durations for each mechanical ventilation instance
+
+--- now we convert CHARTTIME of ventilator settings into durations
+-- create the durations for each oxygen therapy instance
+-- We only keep the first oxygen therapy instance
+, vd3 AS
+(
 select icustay_id
-  -- regenerate ventnum so it's sequential
-  , ROW_NUMBER() over (partition by icustay_id order by ventnum) as ventnum_seq
-  , min(charttime) as vent_start
   , max(charttime) as vent_end
-  , AVG(MechVent) as mech_vent
-  , AVG(OxygenTherapy) as oxygen_therapy
-  , DATETIME_DIFF(max(charttime), min(charttime), HOUR) AS duration_hours
+  , min(charttime) as vent_start
+  , max(type) as type
 from vd2
-group by icustay_id, ventnum
-having min(charttime) != max(charttime)
--- patient had to be mechanically ventilated at least once
--- i.e. max(mechvent) should be 1
--- this excludes a frequent situation of NIV/oxygen before intub
--- in these cases, ventnum=0 and max(mechvent)=0, so they are ignored
-and (max(mechvent) = 1 or max(OxygenTherapy) = 1)
-order by icustay_id, ventnum_seq
+where ventnum = 1
+group by icustay_id
+)
+
+-- If the last record was not extubation, add an hour to vent_duration as the oxygen therapy probably continued for longer
+, vd4 AS
+(
+select icustay_id, type
+  , vent_start
+  , CASE
+	WHEN last_extubation = vent_end THEN vent_end -- Last record was extubation
+	ELSE DATETIME_ADD(vent_end, INTERVAL 1 HOUR)
+  END as vent_end
+from vd3 LEFT JOIN (
+SELECT
+icustay_id AS extub_id,
+max(charttime) as last_extubation
+FROM vd2
+WHERE Extubated = 1 AND ventnum = 1
+GROUP BY icustay_id
+)
+ON vd3.icustay_id = extub_id
+)
+
+select vd4.*
+  -- We use `MINUTE` here as `HOUR` would result in the difference of 1.59pm and 2.01pm to be recorded as 1 hour.
+	, DATETIME_DIFF(vent_end, vent_start, MINUTE)/60 AS vent_duration
+from vd4
