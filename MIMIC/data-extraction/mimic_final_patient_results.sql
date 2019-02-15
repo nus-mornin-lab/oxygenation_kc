@@ -21,16 +21,6 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.admissions` AS admissions
 
 --NOTE currently unused, patient cohort to be moved to R
 
-first_stay AS (
-SELECT
-MIN(DATE(icu.intime)) AS first_icu_date,
-icu.subject_id AS subject_id
-FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
-GROUP BY subject_id),
-
-
---NOTE currently unused, patient cohort to be moved to R
-
 ventilation AS (
 SELECT
   MAX(chart.valuenum) AS max_fiO2,
@@ -39,20 +29,6 @@ SELECT
 FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
 WHERE chart.itemid in (3420, 190, 223835, 3422)
 GROUP BY chart.subject_id, chart.icustay_id),
-
-
---NOTE currently unused, didn't seem to be output by previous MIMIC script
-
-vent_settings AS (
-SELECT
-CASE (SELECT count(mechvent)
-FROM `oxygenators-209612.mimiciii_clinical.ventsettings` AS ventsettings
-WHERE mechvent = 1 
-AND ventsettings.icustay_id = icu.icustay_id)  
-WHEN 0 THEN 0 
-ELSE 1 
-END AS invasive
-FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu),
 
 
 
