@@ -164,8 +164,12 @@ mech_vent.tidal_high_count2 as tidal_count_percentage,
 SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
 SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
 icu.first_careunit as unittype,
--- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql:
-DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) AS icustay_seq,
+CASE
+	WHEN
+	-- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql:
+	DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) = 1 THEN 1
+	ELSE 0
+END AS first_stay,
 oxygen_therapy.* EXCEPT(icustay_id)
 , fiO2.max_fiO2
 FROM icu
