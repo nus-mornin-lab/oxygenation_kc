@@ -23,16 +23,21 @@ SELECT * FROM `oxygenators-209612.mimiciii_clinical.mimic_oxygen_therapy`
 ),
 
 
---NOTE currently unused, patient cohort to be moved to R
-
-ventilation AS (
+-- Extract maximum fraction of inspired oxygen (fiO2) during the oxygen therapy session considered
+fiO2 AS (
 SELECT
   MAX(chart.valuenum) AS max_fiO2,
-  chart.subject_id,
   chart.icustay_id
 FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
-WHERE chart.itemid in (3420, 190, 223835, 3422)
-GROUP BY chart.subject_id, chart.icustay_id),
+LEFT JOIN oxygen_therapy
+ON chart.icustay_id = oxygen_therapy.icustay_id
+WHERE chart.itemid in (3420, 190, 223835, 3422) -- Indicates fiO2 record
+-- We are only interested in measurements during the oxygen therapy session.
+AND chart.charttime >= oxygen_therapy.vent_start
+AND chart.charttime <= oxygen_therapy.vent_end
+-- We exclude measurements marked as errors.
+AND (chart.error <> 1 OR chart.error IS NULL)
+GROUP BY chart.icustay_id),
 
 
 
@@ -162,6 +167,7 @@ icu.first_careunit as unittype,
 -- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql:
 DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) AS icustay_seq,
 oxygen_therapy.* EXCEPT(icustay_id)
+, fiO2.max_fiO2
 FROM icu
 LEFT JOIN pat
   ON icu.subject_id = pat.subject_id
@@ -183,3 +189,5 @@ LEFT JOIN heightweight
   ON icu.icustay_id = heightweight.icustay_id
 LEFT JOIN oxygen_therapy
   ON icu.icustay_id = oxygen_therapy.icustay_id
+LEFT JOIN fiO2
+  ON icu.icustay_id = fiO2.icustay_id
