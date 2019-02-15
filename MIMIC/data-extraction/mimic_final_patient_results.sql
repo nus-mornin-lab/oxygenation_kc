@@ -18,6 +18,10 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.admissions` AS admissions
   ON icu.hadm_id = admissions.hadm_id),
 
 
+oxygen_therapy AS (
+SELECT * FROM `oxygenators-209612.mimiciii_clinical.mimic_oxygen_therapy`
+),
+
 
 --NOTE currently unused, patient cohort to be moved to R
 
@@ -155,7 +159,9 @@ mech_vent.tidal_high_count2 as tidal_count_percentage,
 SAFE_CAST(heightweight.height_first AS FLOAT64) as height,
 SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
 icu.first_careunit as unittype,
-DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) AS icustay_seq -- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql
+-- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql:
+DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) AS icustay_seq,
+oxygen_therapy.* EXCEPT(icustay_id)
 FROM icu
 LEFT JOIN pat
   ON icu.subject_id = pat.subject_id
@@ -175,3 +181,5 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.mechanical_ventilative_volume` m
   ON icu.icustay_id = mech_vent.icustay_id
 LEFT JOIN heightweight
   ON icu.icustay_id = heightweight.icustay_id
+LEFT JOIN oxygen_therapy
+  ON icu.icustay_id = oxygen_therapy.icustay_id
