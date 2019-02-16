@@ -26,7 +26,12 @@ SELECT * FROM `oxygenators-209612.mimiciii_clinical.mimic_oxygen_therapy`
 -- Extract maximum fraction of inspired oxygen (fiO2) during the oxygen therapy session considered
 fiO2 AS (
 SELECT
-  MAX(chart.valuenum) AS max_fiO2,
+  MAX(CASE
+    -- fiO2 is sometimes recorded as a fraction and sometimes as a percentage.
+    -- We transform max_fiO2 into percentages.
+    WHEN chart.valuenum <= 1 THEN 100*chart.valuenum
+    ELSE chart.valuenum
+   END) AS max_fiO2,
   chart.icustay_id
 FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
 LEFT JOIN oxygen_therapy
@@ -37,6 +42,9 @@ AND chart.charttime >= oxygen_therapy.vent_start
 AND chart.charttime <= oxygen_therapy.vent_end
 -- We exclude measurements marked as errors.
 AND (chart.error <> 1 OR chart.error IS NULL)
+-- fiO2 cannot be greater than 100%.
+-- Removing the next line would yield 25 ICU stays with a max_fiO2 above 100%.
+AND chart.valuenum <= 100
 GROUP BY chart.icustay_id),
 
 
