@@ -212,7 +212,7 @@ group by icustay_id
 -- If the last record was not extubation, add an hour to vent_duration as the oxygen therapy probably continued for longer
 , vd4 AS
 (
-select icustay_id, type
+select icustay_id, type AS oxygen_therapy_type
   , vent_start
   , CASE
 	WHEN last_extubation = vent_end THEN vent_end -- Last record was extubation
