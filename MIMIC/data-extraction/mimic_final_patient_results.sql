@@ -71,7 +71,7 @@ SELECT DISTINCT
   , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy
   , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median
   , AVG(CAST(ce.spO2_Value < 94 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propBelow
-  , AVG(CAST(ce.spO2_Value > 97 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propAbove
+  , AVG(CAST(ce.spO2_Value > 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propAbove
 FROM ce
 INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
 WHERE oxygen_therapy.vent_start <= ce.charttime AND oxygen_therapy.vent_end >= ce.charttime
