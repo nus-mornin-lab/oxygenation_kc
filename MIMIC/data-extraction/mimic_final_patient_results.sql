@@ -68,6 +68,9 @@ AND chart.valuenum >= 10 AND chart.valuenum <= 100
 -- Edited from https://github.com/cosgriffc/hyperoxia-sepsis
 SELECT DISTINCT
     ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
   , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy
   , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median
   , AVG(CAST(ce.spO2_Value < 94 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propBelow
