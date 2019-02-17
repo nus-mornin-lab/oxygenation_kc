@@ -172,7 +172,7 @@ SELECT
   pat.hospitalDischargeYear, -- hospitalAdmitYear is missing in patient table
   pat.uniquepid AS patient_ID,
   pat.patientunitstayid AS icustay_id,
-  SAFE_CAST(REGEXP_EXTRACT(pat.age, r"[0-9]+") as FLOAT64) AS age,
+  SAFE_CAST(pat.age AS FLOAT64) AS age,
   pat.admissionHeight AS height,
   pat.admissionWeight AS weight,
 --  pat.hospitaladmitoffset AS hospitaladmitoffset,
