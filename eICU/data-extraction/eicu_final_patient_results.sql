@@ -101,6 +101,69 @@ OR cplitemvalue = "End of life"
 
 
 
+, oxygen_therapy AS (
+	SELECT *
+	FROM `oxygenators-209612.eicu.eicu_oxygen_therapy`
+)
+
+
+-- Extract maximum fraction of inspired oxygen (fiO2) during the oxygen therapy session considered
+, fiO2 AS (
+  SELECT
+    MAX(CASE
+      -- fiO2 is sometimes recorded as a fraction and sometimes as a percentage.
+      -- We transform fiO2 into percentages.
+      WHEN SAFE_CAST(chart.respchartvalue AS FLOAT64) <= 1 THEN 100*SAFE_CAST(chart.respchartvalue AS FLOAT64)
+      ELSE SAFE_CAST(chart.respchartvalue AS FLOAT64)
+    END) AS max_fiO2
+    , chart.patientunitstayid AS icustay_id
+  FROM `oxygenators-209612.eicu.respiratorycharting` AS chart
+    LEFT JOIN oxygen_therapy
+    ON chart.patientunitstayid = oxygen_therapy.icustay_id
+  WHERE
+  	-- Indicates fiO2 record
+  	LOWER(chart.respchartvaluelabel) IN ('fio2', 'fio2 (%)')
+    -- We are only interested in measurements during the oxygen therapy session.
+		AND chart.respchartoffset >= oxygen_therapy.vent_start
+    AND chart.respchartoffset <= oxygen_therapy.vent_end
+    -- fiO2 cannot be greater than 100%.
+    AND SAFE_CAST(chart.respchartvalue AS FLOAT64) <= 100
+  GROUP BY chart.patientunitstayid
+)
+
+
+-- Computing summaries of the blood oxygen saturation (SpO2)
+, SpO2 AS (
+
+	WITH ce AS (
+		SELECT DISTINCT 
+			chart.patientunitstayid AS icustay_id
+			, SAFE_CAST(chart.nursingchartvalue as FLOAT64) as spO2_Value
+			, chart.nursingchartoffset AS charttime
+		FROM `oxygenators-209612.eicu.nursecharting` AS chart
+		WHERE chart.nursingchartcelltypevalname = "O2 Saturation"
+	)
+
+	SELECT DISTINCT
+		ce.icustay_id
+		, COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy
+		, PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median
+		, AVG(CAST(ce.spO2_Value < 94 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propBelow
+		, AVG(CAST(ce.spO2_Value > 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS propAbove
+	FROM ce
+		INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+	WHERE
+		-- We are only interested in measurements during the oxygen therapy session.
+		oxygen_therapy.vent_start <= ce.charttime
+		AND oxygen_therapy.vent_end >= ce.charttime
+		-- We remove oxygen measurements that are outside of the range [10, 100]
+		AND ce.spO2_Value >= 10
+		AND ce.spO2_Value <= 100
+
+)
+
+
+
 SELECT 
   pat.gender,
   pat.unittype,
@@ -122,6 +185,9 @@ SELECT
   fluid_balance.* EXCEPT(patientunitstayid),
   sofa_results.* EXCEPT(patientunitstayid),
   IF(end_of_life.patientunitstayid IS NULL, FALSE, TRUE) as end_of_life
+	, oxygen_therapy.* EXCEPT(icustay_id)
+	, fiO2.max_fiO2
+	, SpO2.* EXCEPT(icustay_id)
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
@@ -133,3 +199,9 @@ LEFT JOIN sofa_results
   ON pat.patientunitstayid = sofa_results.patientunitstayid
 LEFT JOIN end_of_life
   ON pat.patientunitstayid = end_of_life.patientunitstayid
+LEFT JOIN oxygen_therapy
+  ON pat.patientunitstayid = oxygen_therapy.icustay_id
+LEFT JOIN fiO2
+  ON pat.patientunitstayid = fiO2.icustay_id
+LEFT JOIN SpO2
+  ON pat.patientunitstayid = SpO2.icustay_id
