@@ -1,0 +1,814 @@
+---
+title: Oxygen project using both eICU and MIMIC data
+author: Willem van den Boom
+date: February 17, 2019
+output:
+  html_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup_chunk, results='hide'}
+if(!require(bigrquery)) {
+  install.packages("bigrquery")
+  library("bigrquery")
+}
+
+# Project ID from Google Cloud
+project_id <- "oxygenators-209612"
+options(httr_oauth_cache=FALSE)
+
+# Wrapper for running BigQuery queries.
+run_query <- function(query){
+    data <- query_exec(query, project=project_id, use_legacy_sql = FALSE, max_pages = Inf)
+    return(data)
+}
+
+# Library for fitting generalized additive models (GAMs)
+library(mgcv)
+if(!require(mgcv)) {
+  install.packages("mgcv")
+  library("mgcv")
+}
+```
+
+
+# Read in data from eICU
+
+```{r eval=FALSE}
+pat_MIMIC <- run_query('
+SELECT * FROM mimiciii_clinical.mimic_final_patient_results
+')
+
+pat_eICU <- run_query('
+SELECT * FROM eicu.final_patient_results
+')
+```
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/data_analysis_v1_checkpoint1.RData")
+```
+
+```{r loadData, include=FALSE, eval=TRUE}
+# Since Google authentication cannot happen when knitting an R Markdown file,
+# I load the results from BigQuery from an RData file.
+load("RData/data_analysis_v1_checkpoint1.RData")
+```
+
+
+# Data preprocessing
+
+
+## Age
+
+Abnormally large ages appear in MIMIC. They are right-censored ages >89. We set them to a missing value.
+
+```{r}
+pat_MIMIC$age[pat_MIMIC$age > 100] <- NA
+```
+
+
+
+## Body mass index
+
+Compute the body mass index of each patient.
+
+```{r}
+# Remove heights above 3 meter and below .5 meter.
+pat_eICU$height[pat_eICU$height > 300 | pat_eICU$height < 50] <- NA
+
+# Remove weights below 20kg and above 600kg
+pat_eICU$weight[pat_eICU$weight < 20 | pat_eICU$weight > 600] <- NA
+
+# Compute the body mass index
+pat_eICU$bmi <- pat_eICU$weight / (pat_eICU$height/100)^2
+
+# Remove BMIs below 15 or above 100
+pat_eICU$bmi[pat_eICU$bmi < 15 | pat_eICU$bmi > 100] <- NA
+
+
+
+
+# Remove heights above 3 meter and below .5 meter.
+pat_MIMIC$height[pat_MIMIC$height > 300 | pat_MIMIC$height < 50] <- NA
+
+# Remove weights below 20kg and above 600kg
+pat_MIMIC$weight[pat_MIMIC$weight < 20 | pat_MIMIC$weight > 600] <- NA
+
+# Compute the body mass index
+pat_MIMIC$bmi <- pat_MIMIC$weight / (pat_MIMIC$height/100)^2
+
+# Remove BMIs below 15 or above 100
+pat_MIMIC$bmi[pat_MIMIC$bmi < 15 | pat_MIMIC$bmi > 100] <- NA
+```
+
+
+## Gender
+
+Transform gender to a factor rather than string
+Set genders that are neither male nor female as missing, effectively excluding these from the analysis
+```{r}
+if(is.character(pat_eICU$gender)) pat_eICU$gender_string <- pat_eICU$gender
+summary(as.factor(pat_eICU$gender_string))
+
+pat_eICU$gender <- NA
+pat_eICU$gender[pat_eICU$gender_string == "Female"] = "F"
+pat_eICU$gender[pat_eICU$gender_string == "Male"] = "M"
+
+pat_eICU$gender <- as.factor(pat_eICU$gender)
+
+
+
+if(is.character(pat_MIMIC$gender)) pat_MIMIC$gender_string <- pat_MIMIC$gender
+summary(as.factor(pat_MIMIC$gender_string))
+
+pat_MIMIC$gender <- as.factor(pat_MIMIC$gender)
+```
+
+
+## ICU type
+
+Consolidate the various ICU types such that only general, cardiac, and neuro ICU remain.
+
+
+### From Slack
+
+*Mornin Feng*
+The followings are my suggestions:
+1/ Just exclude Neuro ICUS
+2/ Merge  “Cardiac ICU”
+“CCU-CTICU”: Coronary Care Unit / Cardiothoracic ICU
+“CTICU”: Cardiothoracic ICU
+as CCUs, BUT keep “CSICU”: Cardiac Surgery ICU separately as CSICU
+3/ MICU and SICU should not be merged
+4/ Med-Surg ICU, KC See what do you think? (edited)
+
+
+*KC See*
+I largely agree with Mornin. The Neuro ICU is unclear what it is - Medical Neuro vs Neurosurgical. For CSICU, I think it is like CTICU. Can we do analysis with and without it, and see if there is a difference? MICU, MSICU, and SICU should be separate. Then if all shows similar results, we can pool everything too
+
+```{r}
+pat_eICU$unit_type = as.factor(pat_eICU$unittype)
+
+#levels(pat_eICU$unit_type)[levels(pat_eICU$unit_type) %in% c("Med-Surg ICU", "MICU", "SICU")] = "General ICU"
+levels(pat_eICU$unit_type)[levels(pat_eICU$unit_type) %in% c("CCU-CTICU", "CSICU", "CTICU")] = "Cardiac ICU"
+```
+
+
+
+We do no grouping ICU type for MIMIC since the data come from one hospital. See (https://mimic.physionet.org/mimictables/transfers/) for a list of ICU types.
+
+```{r}
+pat_MIMIC$unit_type <- as.factor(pat_MIMIC$unittype)
+```
+
+
+
+## Determine first stay
+
+For eICU:
+We use `hospitalDischargeYear` and `unit_stay_number` to determine whether an ICU stay was a patient's first.
+
+Note that `unit_stay_number` [does not always start at 1](https://github.com/MIT-LCP/eicu-code/issues/16).
+```{r firstStay}
+pat_eICU$first_stay = NA
+
+for(i in 1:max(pat_eICU$unit_stay_number)) {
+  tmp_table = table(pat_eICU$patient_ID[
+    pat_eICU$unit_stay_number <= i
+    & is.na(pat_eICU$first_stay)
+  ])
+  
+  # An ICU stay that is a patient's only one with `unit_stay_number` <= i
+  # must be a first stay.
+  tmp_index <- pat_eICU$patient_ID %in% names(tmp_table)[tmp_table == 1]
+  
+  pat_eICU$first_stay[
+     tmp_index
+  ] <- FALSE
+  
+  pat_eICU$first_stay[
+    tmp_index
+    & pat_eICU$unit_stay_number <= i
+  ] <- TRUE
+}
+
+
+# `hospitalDischargeYear` only takes the values 2014 and 2015
+unique(pat_eICU$hospitalDischargeYear)
+
+# The remaning NAs in first_stay can only be resolved if a patient
+# has only 1 hospital stay with a discharge in 2014
+tmp_IDs <- unique(pat_eICU$patient_ID[
+  is.na(pat_eICU$first_stay)
+  & pat_eICU$hospitalDischargeYear == 2014
+])
+
+for(id in tmp_IDs) {
+  tmp_index <- which(
+    pat_eICU$patient_ID == id &
+    pat_eICU$hospitalDischargeYear == 2014
+  )
+  
+  if(length(tmp_index) == 1) {
+    pat_eICU$first_stay[pat_eICU$patient_ID == id] <- FALSE
+    pat_eICU$first_stay[tmp_index] <- TRUE
+  }
+}
+
+rm(tmp_table, tmp_index, tmp_IDs, i, id)
+
+summary(pat_eICU$first_stay)
+length(unique(pat_eICU$patient_ID))
+length(unique(pat_eICU$patient_ID[is.na(pat_eICU$first_stay)]))
+
+summary(pat_MIMIC$first_stay)
+```
+
+
+
+## Mortality
+
+```{r}
+pat_eICU$mortality_in_ICU <- NA
+pat_eICU$mortality_in_ICU[pat_eICU$discharge_status_ICU == "Alive"] <- FALSE
+pat_eICU$mortality_in_ICU[pat_eICU$discharge_status_ICU == "Expired"] <- TRUE
+summary(pat_eICU$mortality_in_ICU)
+
+pat_eICU$mortality_in_Hospt <- NA
+pat_eICU$mortality_in_Hospt[pat_eICU$discharge_status_Hospt == "Alive"] <- FALSE
+pat_eICU$mortality_in_Hospt[pat_eICU$discharge_status_Hospt == "Expired"] <- TRUE
+# If someone expires in the ICU, then they expire in the hospital.
+pat_eICU$mortality_in_Hospt[which(pat_eICU$mortality_in_ICU)] <- TRUE
+summary(pat_eICU$mortality_in_Hospt)
+
+
+summary(pat_MIMIC$mortality_in_ICU)
+# If someone expires in the ICU, then they expire in the hospital.
+pat_MIMIC$mortality_in_Hospt[pat_MIMIC$mortality_in_ICU == 1] <- TRUE
+summary(pat_MIMIC$mortality_in_Hospt)
+```
+
+
+## Oxygen saturation measurements
+
+Proportion of SpO2 measurements from 94 to 98
+```{r}
+pat_eICU$prop <- 1 - pat_eICU$propBelow - pat_eICU$propAbove
+pat_MIMIC$prop <- 1 - pat_MIMIC$propBelow - pat_MIMIC$propAbove
+```
+
+
+
+# Oxygen measurements
+
+We are only interested in those receiving oxygen for at least 48 or `time_limit` hours during their first oxygen therapy session.
+We also require them to have at least 24 or `nOxy_limit` blood oxygen saturation (SpO2) measurements during this oxygen therapy session.
+
+```{r countOxygen, include=TRUE, eval=TRUE}
+nOxy_limit <- 24
+time_limit <- 24*2
+
+# ICU stays that do not have any measurements are currently NA and should be 0.
+pat_eICU$nOxy[which(is.na(pat_eICU$nOxy) & !is.na(pat_eICU$vent_duration))] <- 0
+pat_MIMIC$nOxy[which(is.na(pat_MIMIC$nOxy) & !is.na(pat_MIMIC$vent_duration))] <- 0
+```
+
+
+
+# Determine high ventilation
+
+TBD, but left out for now since it is only required for the supplement.
+See `eICU_data_analysis_v9.Rmd` for how it can be done.
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/data_analysis_v1_checkpoint_vent2_3.RData")
+```
+
+
+
+# Subset selection
+
+The following code selects cases of interest while also providing the info required for a flow diagram: That is, how many patients did not meet the inclusion criteria.
+
+```{r}
+subset_selection <- function(patient) {
+
+cat("Total number of ICU stays:", nrow(patient))
+
+# We only keep first stays with at least 48 hours of ventilation
+tmp <- which(patient$first_stay)
+cat("\nNumber of first stays:", length(tmp))
+cat("\nNumber of repeat stays:", sum(patient$first_stay == FALSE, na.rm = TRUE))
+cat("\nNumber of patients for whom we couldn't determine first stays:", length(unique(patient$patient_ID[is.na(patient$first_stay)])))
+patient_subset <- patient[tmp,]
+
+
+
+# Ages above 89 are recorded as "> 89" in the eICU data
+# and set to approximately 300 in MIMIC.
+# The SQL code translates "> 89" to a missing value
+# We only consider "adults" (age >= 16).
+tmp <- patient_subset$age < 16
+sum(patient_subset$age < 16, na.rm = TRUE)
+cat("\nPatients younger than 16:", sum(tmp, na.rm = TRUE))
+cat("\nPatients with missing or right-censored age:", sum(is.na(tmp)))
+tmp[is.na(tmp)] <- TRUE
+
+# `delete` records which cases to delete from patient
+delete <- tmp
+
+# Delete those whose gender is unknown or other
+tmp <- is.na(patient_subset$gender)
+cat("\nPatients with missing or 'other' gender:", sum(tmp))
+delete <- delete | tmp
+
+
+# Delete those with missing BMI
+tmp <- is.na(patient_subset$bmi)
+cat("\nPatients with missing BMI:", sum(tmp))
+delete <- delete | tmp
+
+
+# Delete those with missing SOFA score
+tmp <- is.na(patient_subset$sofatotal)
+cat("\nPatients with missing SOFA score:", sum(tmp))
+delete <- delete | tmp
+
+# Delete those with missing outcome of hospital mortality
+tmp <- is.na(patient_subset$mortality_in_Hospt)
+cat("\nPatients with missing outcome of hospital mortality:", sum(tmp))
+delete <- delete | tmp
+
+
+
+cat("\nPatients selected so far:", sum(!delete))
+
+patient_subset <- patient_subset[!delete,]
+
+tmp_IDs <- patient_subset$icustay_id
+
+tmp <- patient_subset$vent_duration >= time_limit
+cat("\nNumber of ICU stays without an oxygen therapy session:", sum(is.na(tmp)))
+cat("\nNumber of ICU stays with a first oxygen therapy session of less than 48 hours:", sum(tmp == FALSE, na.rm = TRUE))
+tmp <- which(tmp)
+cat("\nNumber of first ventilations of at least 48 hours:", length(tmp))
+patient_subset <- patient_subset[tmp,]
+
+
+
+cat("Number of selected patients so far:", nrow(patient_subset))
+
+
+
+
+# Delete those with fewer than 24 oxygen measurements
+delete <- patient_subset$nOxy < nOxy_limit
+cat("\nPatients with too few measurements:", sum(delete), "out of", nrow(patient_subset))
+
+# Only keep those with fiO2 above 21% at least once during their oxygen therapy session.
+keep <- patient_subset$max_fiO2 > 21
+cat("\nPatients with no fiO2 recorded:", sum(is.na(keep)))
+cat("\nPatients with no fiO2 above 21%:", sum(keep == FALSE, na.rm = TRUE))
+
+patient_subset <- patient_subset[which(!delete & keep),]
+
+
+### We do not subset by `high_vent_proportion` since this is not recorded for those on supplemental oxygen.
+### Tidal volume is also often not recorded for those on noninvasive ventilation.
+#table(is.na(patient_subset$high_vent_proportion), patient_subset$oxygen_therapy_type)
+
+
+cat("\nPatients selected:", nrow(patient_subset))
+
+summary(as.factor(patient_subset$oxygen_therapy_type))
+#sum(tmp <- is.na(patient_subset$high_vent_proportion) & patient_subset$oxygen_therapy_type >= 2)
+
+
+cat("\nCases with supplemental oxygen selected:", sum(patient_subset$oxygen_therapy_type == 1) )
+
+cat("\nCases with mechanical ventilation selected:", sum(patient_subset$oxygen_therapy_type >= 2) )# & !tmp) )
+
+return(list(patient_subset, tmp_IDs))
+}
+
+tmp <- subset_selection(pat_eICU)
+pat_eICU_subset <- tmp[[1]]
+IDs_eICU <- tmp[[2]]
+
+tmp <- subset_selection(pat_MIMIC)
+pat_MIMIC_subset <- tmp[[1]]
+IDs_MIMIC <- tmp[[2]]
+
+rm(tmp)
+```
+
+
+
+## Number of unique hospitals
+
+eICU-CRD covers multiple hospitals.
+We only keep hospitals with at least 2 cases:
+Hospital will be used as a random effect. Having hospitals only appear once in the data makes model estimation computationally more challenging.
+
+```{r, include = TRUE, eval = TRUE}
+
+cat("\n Number of hospitals in current subset:", length(unique(pat_eICU_subset$hospital_id)))
+
+tmp <- table(pat_eICU_subset$hospital_id)
+cat("\n Number of hospitals with at least 2 patients:", sum(tmp >= 2))
+
+delete <- pat_eICU_subset$hospital_id %in% as.numeric(names(tmp[tmp < 2]))
+pat_eICU_subset <- pat_eICU_subset[!delete,]
+pat_eICU_subset$hospital_id = as.factor(pat_eICU_subset$hospital_id)
+
+cat("\n Number of patients in selected subset:", nrow(pat_eICU_subset))
+
+rm(tmp, delete)
+```
+
+
+
+## Demographics
+
+Let us compare the demographics before and after the subset selection.
+
+```{r}
+# Variables of which we like summaries
+tmp <- c('age', 'gender', 'bmi', 'sofatotal', 'unit_type', 'nOxy', 'mortality_in_Hospt')
+
+summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])
+for(varname in tmp) cat("\n", varname, sd(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,varname]))
+
+summary(pat_eICU_subset[,tmp])
+for(varname in tmp) cat("\n", varname, sd(pat_eICU_subset[,varname]))
+
+summary(pat_eICU_subset$median)
+sd(pat_eICU_subset$median)
+summary(pat_eICU_subset$prop)
+sd(pat_eICU_subset$prop)
+
+
+summary(pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC,tmp])
+for(varname in tmp) cat("\n", varname, sd(pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC,varname]))
+
+summary(pat_MIMIC_subset[,tmp])
+for(varname in tmp) cat("\n", varname, sd(pat_MIMIC_subset[,varname]))
+
+summary(pat_MIMIC_subset$median)
+sd(pat_MIMIC_subset$median)
+summary(pat_MIMIC_subset$prop)
+sd(pat_MIMIC_subset$prop)
+```
+
+
+```{r include=FALSE, eval=FALSE}
+save.image(file = "RData/data_analysis_v1_checkpoint_vent3.RData")
+```
+
+
+
+
+
+
+# Model fitting
+
+
+Let us first define functions to visualize the GAM fits.
+```{r plotFunctions}
+plot_width <- 17.2 * 0.393701 # The textwidth of our Word manuscript in inches.
+#plot_width <- 4.2126 # The Lancet asks for plots to have a width of 107mm.
+font <- "Times" # Text in figures should be Times New Roman according to the Lancet.
+point_size <- 10 # Per Lancet instructions
+
+
+logistic <- function(x) 1/(1+exp(-x))
+
+gam_plotMed <- function(gamfitMed,
+                    main = "Median of measurements",
+                    xRange = c(92, 100),
+                    yRange = c(0, .4)
+) {
+print(paste("Number of cases:", summary(gamfitMed)$n))
+
+xlab <- expression("Median oxygen saturation (SpO"[2]*")")
+ylab <- "Probability of hospital mortality" 
+
+xName <- "median"
+
+# Color for dotted line
+colD <- "Black"
+
+    plot(1, type = 'n', xlim = xRange, ylim = yRange,
+         ylab = ylab,
+         xlab = xlab, main = main, yaxs = 'i', xaxs = 'i', yaxt = 'n', xaxt = 'n')
+    
+    att <- pretty(yRange)
+if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
+  axis(2, at = att, lab = paste0(sprintf('%.1f', att*100), '%'), las = TRUE)
+} else axis(2, at = att, lab = paste0(att*100, '%'), las = TRUE)
+    
+    att <- pretty(xRange)
+    axis(1, at = att, lab = paste0(att, '%'), las = TRUE)
+
+    
+    eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitMed, newdata = data.frame(',
+                              xName, ' = gamfitMed$model$', xName, ", gender = 'F', age = median(gamfitMed$model$age), bmi = median(gamfitMed$model$bmi),",
+                      ifelse(
+                        "high_vent_proportion" %in% colnames(gamfitMed$model),
+                        "high_vent_proportion = median(gamfitMed$model$high_vent_proportion),",
+                        ""
+                      ),
+                      ifelse(
+                        "apsiii" %in% colnames(gamfitMed$model),
+                        "apsiii = median(gamfitMed$model$apsiii),",
+                        "sofatotal = median(gamfitMed$model$sofatotal),"
+                      ),
+                      "hospital_id = 264), type = 'link', se.fit = T)"), collapse = "")))
+
+  
+  # We have to use the data on which GAM was fit for confidence region as the GAM does not provide standard errors for 'new' input
+  eval(parse(text = paste0('xx <- gamfitMed$model$', xName)))
+  ord.index <- order(xx)
+  xx <- xx[ord.index]
+  
+  if(gamfitMed$family$link == 'logit') {
+    lcl <- logistic(predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index])
+    ucl <- logistic(predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index])
+    
+    lines(x = xx, y = lcl, lty = 2, lwd = 2, col = colD)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2, col = colD)
+    lines(xx, logistic(predictionsPlusCI$fit[ord.index]), lwd = 3)
+  } else {
+    lcl <- predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index]
+    ucl <- predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index]
+    
+    lines(x = xx, y = lcl, lty = 2, lwd = 2)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2)
+    lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
+  }
+}
+
+
+
+gam_plotProp <- function(gamfitProp, main = "Effect of treatment regime", yRange = c(0, .3), add = FALSE, col = "black"){
+  print(paste("Number of cases:", summary(gamfitProp)$n))
+  
+  xName <- colnames(gamfitProp$model)[grep("prop", colnames(gamfitProp$model))]
+  
+  xRange = c(0, max(gamfitProp$model[,xName], na.rm= TRUE))
+  
+  if(xName == "propBelow") {
+    xlab <- expression("Proportion of SpO"[2]*" <94% (black) or >98% (blue)")
+    #xlab <- expression("Proportion of  SpO"[2]*" measurements below 94%")
+  } else if(xName == "propAbove") {
+    xlab <- expression("Proportion of SpO"[2]*" measurements above 98%")
+  } else {
+    xlab <- expression("Proportion of SpO"[2]*" measurements within 94% to 98%")
+  }
+  
+  ylab <- "Probability of hospital mortality" 
+  
+  if(!add) {
+    plot(1, type = 'n', xlim = xRange, ylim = yRange,
+           ylab = ylab,
+           xlab = xlab, main = main, yaxs = 'i', xaxs = 'i', yaxt = 'n', xaxt = 'n')
+      
+      att <- pretty(yRange)
+    if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
+      axis(2, at = att, lab = paste0(sprintf('%.1f', att*100), '%'), las = TRUE)
+    } else axis(2, at = att, lab = paste0(att*100, '%'), las = TRUE)
+      
+      att <- pretty(xRange)
+      axis(1, at = att, lab = paste0(att*100, '%'), las = TRUE)
+  
+  }
+    
+    eval(parse(text = paste(c('predictionsPlusCI <- predict(gamfitProp, newdata = data.frame(',
+                              xName, ' = gamfitProp$model$', xName, ", gender = 'F', age = median(gamfitProp$model$age), bmi = median(gamfitProp$model$bmi),",
+                      ifelse(
+                        "high_vent_proportion" %in% colnames(gamfitProp$model),
+                        "high_vent_proportion = median(gamfitProp$model$high_vent_proportion),",
+                        ""
+                      ),
+                      ifelse(
+                        "apsiii" %in% colnames(gamfitProp$model),
+                        "apsiii = median(gamfitProp$model$apsiii),",
+                        "sofatotal = median(gamfitProp$model$sofatotal),"
+                      ),
+                      "hospital_id = 264), type = 'link', se.fit = T)"), collapse = "")))
+    
+    
+  
+  # We have to use the data on which GAM was fit for confidence region as the GAM does not provide standard errors for 'new' input
+  eval(parse(text = paste0('xx <- gamfitProp$model$', xName)))
+  ord.index <- order(xx)
+  xx <- xx[ord.index]
+  
+  if(gamfitProp$family$link == 'logit') {
+    lcl <- logistic(predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index])
+    ucl <- logistic(predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index])
+    
+    lines(x = xx, y = lcl, lty = 2, lwd = 2, col = col)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
+    lines(xx, logistic(predictionsPlusCI$fit[ord.index]), lwd = 3, col = col)
+  } else {
+    lcl <- predictionsPlusCI$fit[ord.index] - 1.96*predictionsPlusCI$se.fit[ord.index]
+    ucl <- predictionsPlusCI$fit[ord.index] + 1.96*predictionsPlusCI$se.fit[ord.index]
+    
+    lines(x = xx, y = lcl, lty = 2, lwd = 2, col = col)
+    lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
+    lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3, col = col)
+  }
+}
+```
+
+
+```{r include=FALSE, eval=FALSE}
+save.image("RData/data_analysis_v1_checkpoint2.RData")
+```
+
+
+
+## Median of measurements
+
+We fit a generalized additive model (GAM) to check for the effect of the median oxygen saturation. GAMs are regression models that allow for nonlinear effects of the predictors.
+We add gender and age as predictors to control for them. We also control for hospital but since there are so many hospitals, we add it as a random effect.
+
+
+
+```{r}
+gamfitMed_eICU <- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+```
+
+
+```{r gamfitMed}
+pdf(file = "Figures/med_v1.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU, main = "eICU-CRD")
+
+gam_plotMed(gamfitMed_MIMIC, main = "MIMIC")
+
+dev.off()
+```
+
+
+
+## Proportion of measurements within range
+
+We now fit a GAM with the proportion of measurements within a range instead of the median of the measurements.
+
+```{r}
+gamfitProp_eICU <- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_below_eICU <- gamm(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_above_eICU <- gamm(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+
+
+gamfitProp_MIMIC <- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+
+gamfitProp_below_MIMIC <- gam(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+
+gamfitProp_above_MIMIC <- gam(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+```
+
+```{r gamfitProp}
+pdf(file = "Figures/prop_v1.pdf", width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+par(mfcol = c(2,2), cex = 1)
+
+summary(gamfitProp_eICU)
+gam_plotProp(gamfitProp_eICU, main = "eICU-CRD")
+
+summary(gamfitProp_below_eICU)
+gam_plotProp(gamfitProp_below_eICU, main = "")
+
+summary(gamfitProp_above_eICU)
+gam_plotProp(gamfitProp_above_eICU, main = "", col = "blue", add = TRUE)
+
+
+summary(gamfitProp_MIMIC)
+gam_plotProp(gamfitProp_MIMIC, main = "MIMIC")
+
+summary(gamfitProp_below_MIMIC)
+gam_plotProp(gamfitProp_below_MIMIC, main = "")
+
+summary(gamfitProp_above_MIMIC)
+gam_plotProp(gamfitProp_above_MIMIC, main = "", col = "blue", add = TRUE)
+
+
+dev.off()
+```
+
+
+
+```{r include=FALSE, eval=FALSE}
+save.image("RData/data_analysis_v1_checkpoint3.RData")
+```
+
+
+
+## Odds ratios
+
+Based on the model fits, we can estimate odds ratios, including 95% confidence intervals.
+
+```{r results='hide'}
+if(!require("oddsratio")) {
+  install.packages("oddsratio")
+  library(oddsratio)
+}
+
+computeCI <- function(gam_fit, data) {
+  
+  if("median" %in% colnames(gam_fit$model)) {
+  
+  tmp <- or_gam(data = data, model = gam_fit, pred = "median", values = c(96, 100))
+
+  cat(
+  "The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is ",
+  tmp$oddsratio,
+  " (95% CI ",
+  tmp$`CI_high (97.5%)`,
+  " to ",
+  tmp$`CI_low (2.5%)`,
+  ").\n",
+  sep = ""
+  )
+  
+  tmp <- or_gam(data = data, model = gam_fit, pred = "median", values = c(96, 92))
+
+  cat(
+  "The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is ",
+  tmp$oddsratio,
+  " (95% CI ",
+  tmp$`CI_high (97.5%)`,
+  " to ",
+  tmp$`CI_low (2.5%)`,
+  ").",
+  sep = ""
+  )
+  
+  } else {
+    xName <- colnames(gam_fit$model)[grep("prop", colnames(gam_fit$model))]
+    tmp <- or_gam(data = data, model = gam_fit, pred = xName, values = c(.8, .4))
+
+  cat(
+  "The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is ",
+  tmp$oddsratio,
+  " (95% CI ",
+  tmp$`CI_low (2.5%)`,
+  " to ",
+  tmp$`CI_high (97.5%)`,
+  ").",
+  sep = ""
+  )
+  
+  }
+
+}
+```
+
+```{r}
+computeCI(gamfitMed_eICU, data = pat_eICU_subset)
+computeCI(gamfitProp_eICU, data = pat_eICU_subset)
+computeCI(gamfitProp_above_eICU, data = pat_eICU_subset)
+
+computeCI(gamfitMed_MIMIC, data = pat_MIMIC_subset)
+computeCI(gamfitProp_MIMIC, data = pat_MIMIC_subset)
+computeCI(gamfitProp_above_MIMIC, data = pat_MIMIC_subset)
+```
+
+
+
+Same as above but now without adjusting for covariates
+
+```{r}
+tmp <- gam(mortality_in_Hospt ~ s(median), data = pat_eICU_subset, family = binomial)
+computeCI(tmp, data = pat_eICU_subset)
+
+tmp <- gam(mortality_in_Hospt ~ s(prop), data = pat_eICU_subset, family = binomial)
+computeCI(tmp, data = pat_eICU_subset)
+
+tmp <- gam(mortality_in_Hospt ~ s(propAbove), data = pat_eICU_subset, family = binomial)
+computeCI(tmp, data = pat_eICU_subset)
+
+
+tmp <- gam(mortality_in_Hospt ~ s(median), data = pat_MIMIC_subset, family = binomial)
+computeCI(tmp, data = pat_MIMIC_subset)
+
+tmp <- gam(mortality_in_Hospt ~ s(prop), data = pat_MIMIC_subset, family = binomial)
+computeCI(tmp, data = pat_MIMIC_subset)
+
+tmp <- gam(mortality_in_Hospt ~ s(propAbove), data = pat_MIMIC_subset, family = binomial)
+computeCI(tmp, data = pat_MIMIC_subset)
+```
