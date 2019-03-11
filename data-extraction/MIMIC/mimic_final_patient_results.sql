@@ -12,7 +12,8 @@ SELECT
   ELSE 0
   END AS mortality_in_ICU,
   admissions.deathtime as deathtime, 
-  icu.intime as ICU_intime
+  icu.intime as ICU_intime,
+  admissions.ethnicity
 FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
 LEFT JOIN `oxygenators-209612.mimiciii_clinical.admissions` AS admissions
   ON icu.hadm_id = admissions.hadm_id),

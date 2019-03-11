@@ -284,6 +284,7 @@ SELECT
   pat.hospitalid AS hospital_id,
   pat.unitdischargestatus AS discharge_status_ICU,
   pat.hospitaldischargestatus AS discharge_status_Hospt,
+  pat.ethnicity,
   icd_presence.* EXCEPT(patientunitstayid),
   apsiii.* EXCEPT(patientunitstayid),
   fluid_balance.* EXCEPT(patientunitstayid),
