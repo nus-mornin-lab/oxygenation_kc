@@ -1,7 +1,7 @@
 ---
 title: Oxygen project using both eICU and MIMIC data
 author: Willem van den Boom
-date: February 17, 2019
+date: March 11, 2019
 output:
   html_document: default
 editor_options:
@@ -50,17 +50,44 @@ SELECT * FROM eicu.final_patient_results
 ```
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/data_analysis_v1_checkpoint1.RData")
+save.image(file = "RData/data_analysis_v2_checkpoint1.RData")
 ```
 
 ```{r loadData, include=FALSE, eval=TRUE}
 # Since Google authentication cannot happen when knitting an R Markdown file,
 # I load the results from BigQuery from an RData file.
-load("RData/data_analysis_v1_checkpoint1.RData")
+load("RData/data_analysis_v2_checkpoint1.RData")
 ```
 
 
 # Data preprocessing
+
+
+
+## Age
+
+We recode ethnicity in MIMIC such that its categories match up with eICU.
+
+```{r recode_ethnicity}
+pat_eICU$eth <- pat_eICU$ethnicity
+pat_eICU$eth[pat_eICU$eth == ""] <- "Other/Unknown"
+pat_eICU$eth <- as.factor(pat_eICU$eth)
+print(table(pat_eICU$eth))
+
+pat_MIMIC$eth <- pat_MIMIC$ethnicity
+pat_MIMIC$eth[grepl("NATIVE", pat_MIMIC$eth)] <- "Native American"
+pat_MIMIC$eth[grepl("HISPANIC", pat_MIMIC$eth)] <- "Hispanic"
+pat_MIMIC$eth[grepl("WHITE", pat_MIMIC$eth)] <- "Caucasian"
+pat_MIMIC$eth[grepl("ASIAN", pat_MIMIC$eth)] <- "Asian"
+pat_MIMIC$eth[grepl("AFRICAN AMERICAN", pat_MIMIC$eth)] <- "African American"
+pat_MIMIC$eth[grepl("PORTUGUESE", pat_MIMIC$eth)] <- "Caucasian"
+pat_MIMIC$eth[grepl("MIDDLE EASTERN", pat_MIMIC$eth)] <- "Caucasian"
+pat_MIMIC$eth[!(pat_MIMIC$eth %in% levels(pat_eICU$eth))] <- "Other/Unknown"
+pat_MIMIC$eth <- as.factor(pat_MIMIC$eth)
+
+print(table(pat_MIMIC$eth))
+```
+
 
 
 ## Age
@@ -286,7 +313,7 @@ TBD, but left out for now since it is only required for the supplement.
 See `eICU_data_analysis_v9.Rmd` for how it can be done.
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/data_analysis_v1_checkpoint_vent2_3.RData")
+save.image(file = "RData/data_analysis_v2_checkpoint_vent2_3.RData")
 ```
 
 
@@ -467,7 +494,7 @@ sd(pat_MIMIC_subset$prop)
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image(file = "RData/data_analysis_v1_checkpoint_vent3.RData")
+save.image(file = "RData/data_analysis_v2_checkpoint_vent3.RData")
 ```
 
 
@@ -488,17 +515,56 @@ point_size <- 10 # Per Lancet instructions
 
 logistic <- function(x) 1/(1+exp(-x))
 
-gam_plotMed <- function(gamfitMed,
+
+
+# Function that adds labels to subfigures, edited from:
+# https://logfc.wordpress.com/2017/03/15/adding-figure-labels-a-b-c-in-the-top-left-corner-of-the-plotting-region/
+fig_label <- function(label) {
+    cex <- 2
+    ds <- dev.size("in")
+    # xy coordinates of device corners in user coordinates
+    x <- grconvertX(c(0, ds[1]), from="in", to="user")
+    y <- grconvertY(c(0, ds[2]), from="in", to="user")
+    
+    # fragment of the device we use to plot
+      # account for the fragment of the device that 
+      # the figure is using
+      fig <- par("fig")
+      dx <- (x[2] - x[1])
+      dy <- (y[2] - y[1])
+      x <- x[1] + dx * fig[1:2]
+      y <- y[1] + dy * fig[3:4]
+  
+  
+  sw <- strwidth(label, cex=cex) * 60/100
+  sh <- strheight(label, cex=cex) * 60/100
+  
+  x1 <- x[1] + sw
+  
+  y1 <- y[2] - sh
+  
+  old.par <- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1, y1, label, cex=cex)
+}
+
+
+
+
+gam_plotMed <- function(
+                    gamfitMed,
                     main = "Median of measurements",
                     xRange = c(92, 100),
-                    yRange = c(0, .4)
+                    yRange = c(0, .4),
+                    label
 ) {
 print(paste("Number of cases:", summary(gamfitMed)$n))
 
 xlab <- expression("Median oxygen saturation (SpO"[2]*")")
 ylab <- "Probability of hospital mortality" 
 
-xName <- "median"
+xName <- colnames(gamfitMed$model)[grep("med", colnames(gamfitMed$model))]
 
 # Color for dotted line
 colD <- "Black"
@@ -551,11 +617,19 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     lines(x = xx, y = ucl, lty = 2, lwd = 2)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
   }
+  
+  if(!missing(label)) fig_label(label)
 }
 
 
 
-gam_plotProp <- function(gamfitProp, main = "Effect of treatment regime", yRange = c(0, .3), add = FALSE, col = "black"){
+gam_plotProp <- function(
+  gamfitProp,
+  main = "Effect of treatment regime",
+  yRange = c(0, .3),
+  add = FALSE, col = "black",
+  label
+){
   print(paste("Number of cases:", summary(gamfitProp)$n))
   
   xName <- colnames(gamfitProp$model)[grep("prop", colnames(gamfitProp$model))]
@@ -624,12 +698,14 @@ gam_plotProp <- function(gamfitProp, main = "Effect of treatment regime", yRange
     lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3, col = col)
   }
+  
+  if(!missing(label)) fig_label(label)
 }
 ```
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/data_analysis_v1_checkpoint2.RData")
+save.image("RData/data_analysis_v2_checkpoint2.RData")
 ```
 
 
@@ -649,14 +725,14 @@ gamfitMed_MIMIC <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofat
 
 
 ```{r gamfitMed}
-pdf(file = "Figures/med_v1.pdf", width = plot_width,
+pdf(file = "Figures/med_v2.pdf", width = plot_width,
     height = 3, pointsize = point_size, family = font)
 
 par(mfcol = c(1,2), cex = 1)
 
-gam_plotMed(gamfitMed_eICU, main = "eICU-CRD")
+gam_plotMed(gamfitMed_eICU, main = "eICU-CRD", label = "A")
 
-gam_plotMed(gamfitMed_MIMIC, main = "MIMIC")
+gam_plotMed(gamfitMed_MIMIC, main = "MIMIC", label = "B")
 
 dev.off()
 ```
@@ -683,25 +759,25 @@ gamfitProp_above_MIMIC <- gam(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(
 ```
 
 ```{r gamfitProp}
-pdf(file = "Figures/prop_v1.pdf", width = plot_width,
+pdf(file = "Figures/prop_v2.pdf", width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfcol = c(2,2), cex = 1)
 
 summary(gamfitProp_eICU)
-gam_plotProp(gamfitProp_eICU, main = "eICU-CRD")
+gam_plotProp(gamfitProp_eICU, main = "eICU-CRD", label = "A")
 
 summary(gamfitProp_below_eICU)
-gam_plotProp(gamfitProp_below_eICU, main = "")
+gam_plotProp(gamfitProp_below_eICU, main = "", label = "C")
 
 summary(gamfitProp_above_eICU)
 gam_plotProp(gamfitProp_above_eICU, main = "", col = "blue", add = TRUE)
 
 
 summary(gamfitProp_MIMIC)
-gam_plotProp(gamfitProp_MIMIC, main = "MIMIC")
+gam_plotProp(gamfitProp_MIMIC, main = "MIMIC", label = "B")
 
 summary(gamfitProp_below_MIMIC)
-gam_plotProp(gamfitProp_below_MIMIC, main = "")
+gam_plotProp(gamfitProp_below_MIMIC, main = "", label = "D")
 
 summary(gamfitProp_above_MIMIC)
 gam_plotProp(gamfitProp_above_MIMIC, main = "", col = "blue", add = TRUE)
@@ -713,7 +789,7 @@ dev.off()
 
 
 ```{r include=FALSE, eval=FALSE}
-save.image("RData/data_analysis_v1_checkpoint3.RData")
+save.image("RData/data_analysis_v2_checkpoint3.RData")
 ```
 
 
@@ -812,3 +888,463 @@ computeCI(tmp, data = pat_MIMIC_subset)
 tmp <- gam(mortality_in_Hospt ~ s(propAbove), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)
 ```
+
+
+
+We also compute the estimted mortality after categorizing `prop` into 3 groups.
+
+```{r}
+pat_eICU_subset$prop_cat <- as.factor((pat_eICU_subset$prop >= .4) + (pat_eICU_subset$prop >= .8))
+levels(pat_eICU_subset$prop_cat) <- c("<.4", "[.4, .8)", ">= .8")
+
+
+tab3 <- gamm(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+tmp <- predict(tab3, newdata = data.frame(
+  prop_cat = levels(pat_eICU_subset$prop_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)
+logistic(tmp$fit)
+logistic(tmp$fit + 2*tmp$se.fit)
+
+
+# Same for MIMIC
+
+pat_MIMIC_subset$prop_cat <- as.factor((pat_MIMIC_subset$prop >= .4) + (pat_MIMIC_subset$prop >= .8))
+levels(pat_MIMIC_subset$prop_cat) <- c("<.4", "[.4, .8)", ">= .8")
+
+
+tab3 <- gam(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+tmp <- predict(tab3, newdata = data.frame(
+  prop_cat = levels(pat_MIMIC_subset$prop_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)
+logistic(tmp$fit)
+logistic(tmp$fit + 2*tmp$se.fit)
+
+pat_MIMIC_subset$prop_cat <- as.factor((pat_MIMIC_subset$prop >= .4) + (pat_MIMIC_subset$prop >= .8))
+levels(pat_MIMIC_subset$prop_cat) <- c("<.4", "[.4, .8)", ">= .8")
+
+
+# Now with propAbove
+
+pat_MIMIC_subset$propAbove_cat <- as.factor((pat_MIMIC_subset$propAbove >= .4) + (pat_MIMIC_subset$propAbove >= .8))
+levels(pat_MIMIC_subset$propAbove_cat) <- c("<.4", "[.4, .8)", ">= .8")
+
+tab3 <- gam(mortality_in_Hospt ~ propAbove_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+tmp <- predict(tab3, newdata = data.frame(
+  propAbove_cat = levels(pat_MIMIC_subset$propAbove_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)
+logistic(tmp$fit)
+logistic(tmp$fit + 2*tmp$se.fit)
+```
+
+
+
+## Supplement
+
+Let us now create additional plots for the supplement.
+
+
+
+### Sensitivity analysis
+
+APACHE score instead of SOFA score as control.
+
+```{r apache_model_fit}
+gamfitMed_eICU_tmp <- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC_tmp <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)
+
+
+gamfitProp_eICU_tmp <- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_MIMIC_tmp <- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)
+```
+
+```{r apache}
+pdf(file = "Figures/med_APACHE_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotMed(gamfitMed_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+
+
+
+
+pdf(file = "Figures/prop_APACHE_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotProp(gamfitProp_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+```
+
+
+
+Only considering the first 24, 48, or 72 hours of a ventilation session when it comes to SpO2.
+
+```{r model_fit_24}
+gamfitMed_eICU_tmp <- gamm(mortality_in_Hospt ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 >= 12,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC_tmp <- gam(mortality_in_ICU ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 >= 12,], family = binomial)
+
+
+gamfitProp_eICU_tmp <- gamm(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 >= 12,], family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_MIMIC_tmp <- gam(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 >= 12,], family = binomial)
+```
+
+```{r limit_24}
+pdf(file = "Figures/med_24_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotMed(gamfitMed_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+
+
+
+
+pdf(file = "Figures/prop_24_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotProp(gamfitProp_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+```
+
+
+
+```{r model_fit_48}
+gamfitMed_eICU_tmp <- gamm(mortality_in_Hospt ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 >= 24,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC_tmp <- gam(mortality_in_ICU ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 >= 24,], family = binomial)
+
+
+gamfitProp_eICU_tmp <- gamm(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 >= 24,], family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_MIMIC_tmp <- gam(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 >= 24,], family = binomial)
+```
+
+```{r limit_48}
+pdf(file = "Figures/med_48_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotMed(gamfitMed_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+
+
+
+
+pdf(file = "Figures/prop_48_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotProp(gamfitProp_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+```
+
+
+
+
+```{r model_fit_72}
+gamfitMed_eICU_tmp <- gamm(mortality_in_Hospt ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 >= 36,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC_tmp <- gam(mortality_in_ICU ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 >= 36,], family = binomial)
+
+
+gamfitProp_eICU_tmp <- gamm(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 >= 36,], family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_MIMIC_tmp <- gam(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 >= 36,], family = binomial)
+```
+
+```{r limit_72}
+pdf(file = "Figures/med_72_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotMed(gamfitMed_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+
+
+
+
+pdf(file = "Figures/prop_72_v2.pdf", width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = "eICU-CRD", label = "A")
+
+gam_plotProp(gamfitProp_MIMIC_tmp, main = "MIMIC", label = "B")
+
+dev.off()
+```
+
+
+
+
+### Subgroup analysis
+
+
+Split by ventilation type
+
+```{r model_fit_vent_type}
+gamfitMed_eICU_tmp_1 <- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+gamfitMed_eICU_tmp_2 <- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam
+
+gamfitMed_MIMIC_tmp_1 <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitMed_MIMIC_tmp_2 <- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)
+
+
+gamfitProp_eICU_tmp_1 <- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1))$gam
+gamfitProp_eICU_tmp_2 <- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1))$gam
+
+gamfitProp_MIMIC_tmp_1 <- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitProp_MIMIC_tmp_2 <- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)
+```
+
+```{r vent_type}
+pdf(file = "Figures/med_vent_type_v2.pdf", width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfcol = c(2,2), cex = 1)
+
+vent_type_2 <- "Supplemental oxygen\nor non-invasive ventilation"
+
+gam_plotMed(gamfitMed_eICU_tmp_1, main = "eICU-CRD\nInvasive ventilation", label = "A")
+gam_plotMed(gamfitMed_eICU_tmp_2, main = vent_type_2, label = "C")
+
+gam_plotMed(gamfitMed_MIMIC_tmp_1, main = "MIMIC\nInvasive ventilation", label = "B")
+gam_plotMed(gamfitMed_MIMIC_tmp_2, main = vent_type_2, label = "D")
+
+dev.off()
+
+
+pdf(file = "Figures/prop_vent_type_v2.pdf", width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+par(mfcol = c(2,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp_1, main = "eICU-CRD\nInvasive ventilation", label = "A")
+gam_plotProp(gamfitProp_eICU_tmp_2, main = vent_type_2, label = "C")
+
+gam_plotProp(gamfitProp_MIMIC_tmp_1, main = "MIMIC\nInvasive ventilation", label = "B")
+gam_plotProp(gamfitProp_MIMIC_tmp_2, main = vent_type_2, label = "D")
+
+dev.off()
+```
+
+
+Look at different ICU types.
+
+```{r ICU_type}
+# Matrix with order and "pretty" names for ICU types
+mat <- matrix(NA_character_, nrow = 5, ncol = 4)
+mat[1,] <- c("Cardiac ICU", "CSRU", "eICU-CRD\nCardiac ICU", "MIMIC\nCardiac surgery recovery unit")
+mat[2,] <- c("MICU", "MICU", "Medical ICU", "Medical ICU")
+mat[3,] <- c("SICU", "SICU", "Surgical ICU", "Surgical ICU")
+mat[4,] <- c("Med-Surg ICU", "CCU", "Medical-surgical ICU", "Coronary care unit")
+mat[5,] <- c("Neuro ICU", "TSICU", "Neuro ICU", "Trauma/surgical ICU")
+
+
+
+pdf(file = "Figures/med_ICU_type_v2.pdf", width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(5,2), cex = 1)
+
+for(i in 1:5) {
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+            main = mat[i,3], label = c("A", "C", "E", "G", "I")[i])
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+            main = mat[i,4], label = c("B", "D", "F", "H", "J")[i])
+
+}
+
+dev.off()
+
+
+
+pdf(file = "Figures/prop_ICU_type_v2.pdf", width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(5,2), cex = 1)
+
+for(i in 1:5) {
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+            main = mat[i,3], label = c("A", "C", "E", "G", "I")[i])
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+            main = mat[i,4], label = c("B", "D", "F", "H", "J")[i])
+
+}
+
+dev.off()
+
+```
+
+
+
+Split by ethnicity
+
+```{r ethnicity}
+# Matrix with order and "pretty" names for ethnicities
+n_cat <- 4
+mat <- matrix(NA_character_, nrow = n_cat, ncol = 2)
+mat[1,] <- c("Caucasian", "Caucasian")
+mat[2,] <- c("African American", "African-American")
+mat[3,] <- c("Hispanic", "Hispanic")
+mat[4,] <- c("Asian", "Asian")
+
+
+
+pdf(file = "Figures/med_ethnicity_v2.pdf", width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(n_cat,2), cex = 1)
+
+for(i in 1:n_cat) {
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, "eICU-CRD\n", ""), mat[i,2]), label = c("A", "C", "E", "G", "I")[i])
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, "MIMIC\n", ""), mat[i,2]), label = c("B", "D", "F", "H", "J")[i])
+
+}
+
+dev.off()
+
+
+
+pdf(file = "Figures/prop_ethnicity_v2.pdf", width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(n_cat,2), cex = 1)
+
+for(i in 1:n_cat) {
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, "eICU-CRD\n", ""), mat[i,2]), label = c("A", "C", "E", "G", "I")[i])
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, "MIMIC\n", ""), mat[i,2]), label = c("B", "D", "F", "H", "J")[i])
+
+}
+
+dev.off()
+
+```
+
+
+
+
+
+Split up by whether certain diagnosis was present.
+
+```{r diagnosis}
+# Matrix with order and variable/file names for diagnoses
+n_cat <- 10
+mat <- matrix(NA_character_, nrow = n_cat, ncol = 2)
+mat[1,] <- c("has_atrial_fibrillation_disease", "AF")
+mat[2,] <- c("has_cancer_disease", "cancer")
+mat[3,] <- c("CHF", "CHF")
+mat[4,] <- c("CKD", "CKD")
+mat[5,] <- c("has_chronic_liver_disease", "CLD")
+mat[6,] <- c("has_copd_disease", "COPD")
+mat[7,] <- c("has_diabetes_mellitus_disease", "diabetes")
+mat[8,] <- c("has_hypertension_disease", "hypertension")
+mat[9,] <- c("has_sepsis", "sepsis")
+mat[10,] <- c("has_stroke_disease", "stroke")
+
+for(i in 1:n_cat) {
+  print(i)
+  print(mat[i,])
+
+pdf(file = paste0("Figures/", mat[i,2], "_v2.pdf"), width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfrow = c(2,2), cex = 1)
+
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+            main = "eICU-CRD", label = "A", yRange = 0:1)
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+            main = "MIMIC", label = "B", yRange = 0:1)
+
+
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+            main = "", label = "C", yRange = 0:1)
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+            main = "", label = "D", yRange = 0:1)
+
+
+dev.off()
+}
+```
+
+
+### Histograms of proportions
+
+```{r}
+pdf(file = "Figures/hist_v2.pdf", width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfcol = c(2,2), cex = 1)
+
+xlab1 <- expression("Proportion of SpO"[2]*" measurements within 94% to 98%")
+xlab2 <- expression("Proportion of SpO"[2]*" measurements above 98%")
+
+brks <- seq(from = 0, to = 1, by = .02)
+hist(pat_eICU_subset$prop, breaks = brks, main = "eICU-CRD", xlab = xlab1)
+fig_label("A")
+hist(pat_eICU_subset$propAbove, breaks = brks, xlab = xlab2, main = "")
+fig_label("C")
+
+hist(pat_MIMIC_subset$prop, breaks = brks, main = "MIMIC", xlab = xlab1)
+fig_label("B")
+hist(pat_MIMIC_subset$propAbove, breaks = brks, xlab= xlab2, main = "")
+fig_label("D")
+
+dev.off()
+```
+
