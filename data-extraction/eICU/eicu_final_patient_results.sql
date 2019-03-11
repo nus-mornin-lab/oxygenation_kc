@@ -166,6 +166,107 @@ OR cplitemvalue = "End of life"
 )
 
 
+-- Same as above but now only considering SpO2 measurements during the first
+-- 24/48/72 hours
+, SpO2_24 AS (
+
+  WITH ce AS (
+    SELECT DISTINCT 
+      chart.patientunitstayid AS icustay_id
+      , SAFE_CAST(chart.nursingchartvalue as FLOAT64) as spO2_Value
+      , chart.nursingchartoffset AS charttime
+    FROM `oxygenators-209612.eicu.nursecharting` AS chart
+    WHERE chart.nursingchartcelltypevalname = "O2 Saturation"
+  )
+
+  SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+    , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_24
+    , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_24
+    , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_24
+  FROM ce
+    INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+  WHERE
+    -- We are only interested in measurements during the first 24 hours of the oxygen therapy session.
+    oxygen_therapy.vent_start <= ce.charttime
+    AND oxygen_therapy.vent_end >= ce.charttime
+    AND oxygen_therapy.vent_start + 24*60 >= ce.charttime
+    -- We remove oxygen measurements that are outside of the range [10, 100]
+    AND ce.spO2_Value >= 10
+    AND ce.spO2_Value <= 100
+
+)
+
+
+, SpO2_48 AS (
+
+  WITH ce AS (
+    SELECT DISTINCT 
+      chart.patientunitstayid AS icustay_id
+      , SAFE_CAST(chart.nursingchartvalue as FLOAT64) as spO2_Value
+      , chart.nursingchartoffset AS charttime
+    FROM `oxygenators-209612.eicu.nursecharting` AS chart
+    WHERE chart.nursingchartcelltypevalname = "O2 Saturation"
+  )
+
+  SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+    , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_48
+    , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_48
+    , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_48
+  FROM ce
+    INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+  WHERE
+    -- We are only interested in measurements during the first 48 hours of the oxygen therapy session.
+    oxygen_therapy.vent_start <= ce.charttime
+    AND oxygen_therapy.vent_end >= ce.charttime
+    AND oxygen_therapy.vent_start + 48*60 >= ce.charttime
+    -- We remove oxygen measurements that are outside of the range [10, 100]
+    AND ce.spO2_Value >= 10
+    AND ce.spO2_Value <= 100
+
+)
+
+
+, SpO2_72 AS (
+
+  WITH ce AS (
+    SELECT DISTINCT 
+      chart.patientunitstayid AS icustay_id
+      , SAFE_CAST(chart.nursingchartvalue as FLOAT64) as spO2_Value
+      , chart.nursingchartoffset AS charttime
+    FROM `oxygenators-209612.eicu.nursecharting` AS chart
+    WHERE chart.nursingchartcelltypevalname = "O2 Saturation"
+  )
+
+  SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+    , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_72
+    , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_72
+    , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_72
+  FROM ce
+    INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+  WHERE
+    -- We are only interested in measurements during the first 72 hours of the oxygen therapy session.
+    oxygen_therapy.vent_start <= ce.charttime
+    AND oxygen_therapy.vent_end >= ce.charttime
+    AND oxygen_therapy.vent_start + 72*60 >= ce.charttime
+    -- We remove oxygen measurements that are outside of the range [10, 100]
+    AND ce.spO2_Value >= 10
+    AND ce.spO2_Value <= 100
+
+)
+
+
 
 SELECT 
   pat.gender,
@@ -191,6 +292,9 @@ SELECT
 	, oxygen_therapy.* EXCEPT(icustay_id)
 	, fiO2.max_fiO2
 	, SpO2.* EXCEPT(icustay_id)
+  , SpO2_24.* EXCEPT(icustay_id)
+  , SpO2_48.* EXCEPT(icustay_id)
+  , SpO2_72.* EXCEPT(icustay_id)
 FROM pat
 LEFT JOIN icd_presence
   ON pat.patientunitstayid = icd_presence.patientunitstayid
@@ -208,3 +312,9 @@ LEFT JOIN fiO2
   ON pat.patientunitstayid = fiO2.icustay_id
 LEFT JOIN SpO2
   ON pat.patientunitstayid = SpO2.icustay_id
+LEFT JOIN SpO2_24
+  ON pat.patientunitstayid = SpO2_24.icustay_id
+LEFT JOIN SpO2_48
+  ON pat.patientunitstayid = SpO2_48.icustay_id
+LEFT JOIN SpO2_72
+  ON pat.patientunitstayid = SpO2_72.icustay_id

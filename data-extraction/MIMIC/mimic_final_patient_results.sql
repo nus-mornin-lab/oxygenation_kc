@@ -79,14 +79,115 @@ FROM ce
 INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
 WHERE oxygen_therapy.vent_start <= ce.charttime AND oxygen_therapy.vent_end >= ce.charttime
 
-),
+)
+
+
+-- Same as above but now only considering SpO2 measurements during the first
+-- 24/48/72 hours
+, SpO2_24 AS (
+
+WITH ce AS (SELECT DISTINCT 
+chart.icustay_id,
+chart.valuenum as spO2_Value,
+chart.charttime
+FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
+WHERE chart.itemid in (220277, 646) 
+AND chart.valuenum IS NOT NULL
+-- exclude rows marked as error
+and (chart.error <> 1 OR chart.error IS NULL) --chart.error IS DISTINCT FROM 1
+-- We remove oxygen measurements that are outside of the range [10, 100]
+AND chart.valuenum >= 10 AND chart.valuenum <= 100
+)
+
+-- Edited from https://github.com/cosgriffc/hyperoxia-sepsis
+SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+  , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_24
+  , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_24
+  , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_24
+FROM ce
+INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+WHERE oxygen_therapy.vent_start <= ce.charttime AND oxygen_therapy.vent_end >= ce.charttime
+-- We are only interested in measurements during the first 24 hours of the oxygen therapy session.
+AND DATETIME_DIFF(ce.charttime, oxygen_therapy.vent_start, HOUR) <= 24
+
+)
+
+
+, SpO2_48 AS (
+
+WITH ce AS (SELECT DISTINCT 
+chart.icustay_id,
+chart.valuenum as spO2_Value,
+chart.charttime
+FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
+WHERE chart.itemid in (220277, 646) 
+AND chart.valuenum IS NOT NULL
+-- exclude rows marked as error
+and (chart.error <> 1 OR chart.error IS NULL) --chart.error IS DISTINCT FROM 1
+-- We remove oxygen measurements that are outside of the range [10, 100]
+AND chart.valuenum >= 10 AND chart.valuenum <= 100
+)
+
+-- Edited from https://github.com/cosgriffc/hyperoxia-sepsis
+SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+  , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_48
+  , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_48
+  , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_48
+FROM ce
+INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+WHERE oxygen_therapy.vent_start <= ce.charttime AND oxygen_therapy.vent_end >= ce.charttime
+-- We are only interested in measurements during the first 48 hours of the oxygen therapy session.
+AND DATETIME_DIFF(ce.charttime, oxygen_therapy.vent_start, HOUR) <= 48
+
+)
+
+
+, SpO2_72 AS (
+
+WITH ce AS (SELECT DISTINCT 
+chart.icustay_id,
+chart.valuenum as spO2_Value,
+chart.charttime
+FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
+WHERE chart.itemid in (220277, 646) 
+AND chart.valuenum IS NOT NULL
+-- exclude rows marked as error
+and (chart.error <> 1 OR chart.error IS NULL) --chart.error IS DISTINCT FROM 1
+-- We remove oxygen measurements that are outside of the range [10, 100]
+AND chart.valuenum >= 10 AND chart.valuenum <= 100
+)
+
+-- Edited from https://github.com/cosgriffc/hyperoxia-sepsis
+SELECT DISTINCT
+    ce.icustay_id
+    -- We currently ignore the time aspect of the measurements.
+    -- However, one idally should take into account that
+    -- certain measurements are less spread out than others.
+  , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy_72
+  , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median_72
+  , AVG(CAST(ce.spO2_Value >= 94 AND ce.spO2_Value <= 98 AS INT64)) OVER(PARTITION BY ce.icustay_id) AS prop_72
+FROM ce
+INNER JOIN oxygen_therapy ON ce.icustay_id = oxygen_therapy.icustay_id
+WHERE oxygen_therapy.vent_start <= ce.charttime AND oxygen_therapy.vent_end >= ce.charttime
+-- We are only interested in measurements during the first 72 hours of the oxygen therapy session.
+AND DATETIME_DIFF(ce.charttime, oxygen_therapy.vent_start, HOUR) <= 72
+
+)
 
 
 
 -- Edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/HeightWeightQuery.sql
 -- This query gets the first weight and height
 -- for a single ICUSTAY_ID. It extracts data from the CHARTEVENTS table.
-heightweight AS (
+, heightweight AS (
 WITH FirstVRawData AS
   (SELECT c.charttime,
     c.itemid,c.subject_id,c.icustay_id,
@@ -211,6 +312,9 @@ DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) = 1 AS first
 oxygen_therapy.* EXCEPT(icustay_id)
 , fiO2.max_fiO2
 , SpO2.* EXCEPT(icustay_id)
+, SpO2_24.* EXCEPT(icustay_id)
+, SpO2_48.* EXCEPT(icustay_id)
+, SpO2_72.* EXCEPT(icustay_id)
 FROM icu
 LEFT JOIN pat
   ON icu.subject_id = pat.subject_id
@@ -236,3 +340,9 @@ LEFT JOIN fiO2
   ON icu.icustay_id = fiO2.icustay_id
 LEFT JOIN SpO2
   ON icu.icustay_id = SpO2.icustay_id
+LEFT JOIN SpO2_24
+  ON icu.icustay_id = SpO2_24.icustay_id
+LEFT JOIN SpO2_48
+  ON icu.icustay_id = SpO2_48.icustay_id
+LEFT JOIN SpO2_72
+  ON icu.icustay_id = SpO2_72.icustay_id
