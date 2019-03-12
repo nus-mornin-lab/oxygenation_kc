@@ -11,7 +11,7 @@
 
 <meta name="author" content="Willem van den Boom" />
 
-<meta name="date" content="2019-02-17" />
+<meta name="date" content="2019-03-11" />
 
 <title>Oxygen project using both eICU and MIMIC data</title>
 
@@ -124,7 +124,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Oxygen project using both eICU and MIMIC data</h1>
 <h4 class="author"><em>Willem van den Boom</em></h4>
-<h4 class="date"><em>February 17, 2019</em></h4>
+<h4 class="date"><em>March 11, 2019</em></h4>
 
 </div>
 
@@ -134,11 +134,6 @@ $(document).ready(function () {
   library(&quot;bigrquery&quot;)
 }</code></pre>
 <pre><code>## Loading required package: bigrquery</code></pre>
-<pre><code>## Warning in library(package, lib.loc = lib.loc, character.only = TRUE,
-## logical.return = TRUE, : there is no package called 'bigrquery'</code></pre>
-<pre><code>## Installing package into '/usr/local/lib/R/site-library'
-## (as 'lib' is unspecified)</code></pre>
-<pre><code>## also installing the dependencies 'glue', 'progress', 'rapidjsonr'</code></pre>
 <pre class="r"><code># Project ID from Google Cloud
 project_id &lt;- &quot;oxygenators-209612&quot;
 options(httr_oauth_cache=FALSE)
@@ -170,6 +165,36 @@ SELECT * FROM eicu.final_patient_results
 <div id="data-preprocessing" class="section level1">
 <h1>Data preprocessing</h1>
 <div id="age" class="section level2">
+<h2>Age</h2>
+<p>We recode ethnicity in MIMIC such that its categories match up with eICU.</p>
+<pre class="r"><code>pat_eICU$eth &lt;- pat_eICU$ethnicity
+pat_eICU$eth[pat_eICU$eth == &quot;&quot;] &lt;- &quot;Other/Unknown&quot;
+pat_eICU$eth &lt;- as.factor(pat_eICU$eth)
+print(table(pat_eICU$eth))</code></pre>
+<pre><code>## 
+## African American            Asian        Caucasian         Hispanic 
+##            21308             3270           155285             7464 
+##  Native American    Other/Unknown 
+##             1700            11832</code></pre>
+<pre class="r"><code>pat_MIMIC$eth &lt;- pat_MIMIC$ethnicity
+pat_MIMIC$eth[grepl(&quot;NATIVE&quot;, pat_MIMIC$eth)] &lt;- &quot;Native American&quot;
+pat_MIMIC$eth[grepl(&quot;HISPANIC&quot;, pat_MIMIC$eth)] &lt;- &quot;Hispanic&quot;
+pat_MIMIC$eth[grepl(&quot;WHITE&quot;, pat_MIMIC$eth)] &lt;- &quot;Caucasian&quot;
+pat_MIMIC$eth[grepl(&quot;ASIAN&quot;, pat_MIMIC$eth)] &lt;- &quot;Asian&quot;
+pat_MIMIC$eth[grepl(&quot;AFRICAN AMERICAN&quot;, pat_MIMIC$eth)] &lt;- &quot;African American&quot;
+pat_MIMIC$eth[grepl(&quot;PORTUGUESE&quot;, pat_MIMIC$eth)] &lt;- &quot;Caucasian&quot;
+pat_MIMIC$eth[grepl(&quot;MIDDLE EASTERN&quot;, pat_MIMIC$eth)] &lt;- &quot;Caucasian&quot;
+pat_MIMIC$eth[!(pat_MIMIC$eth %in% levels(pat_eICU$eth))] &lt;- &quot;Other/Unknown&quot;
+pat_MIMIC$eth &lt;- as.factor(pat_MIMIC$eth)
+
+print(table(pat_MIMIC$eth))</code></pre>
+<pre><code>## 
+## African American            Asian        Caucasian         Hispanic 
+##             5646             2032            43268             2197 
+##  Native American    Other/Unknown 
+##               75             8314</code></pre>
+</div>
+<div id="age-1" class="section level2">
 <h2>Age</h2>
 <p>Abnormally large ages appear in MIMIC. They are right-censored ages &gt;89. We set them to a missing value.</p>
 <pre class="r"><code>pat_MIMIC$age[pat_MIMIC$age &gt; 100] &lt;- NA</code></pre>
@@ -601,7 +626,7 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 <pre><code>##       age       gender         bmi          sofatotal      unit_type   
 ##  Min.   :16.0   F: 6937   Min.   :15.04   Min.   : 0.000   CCU  :2815  
 ##  1st Qu.:54.0   M:11168   1st Qu.:24.14   1st Qu.: 2.000   CSRU :6933  
-##  Median :65.0             Median :27.49   Median : 4.000   MICU :4309  
+##  Median :65.0             Median :27.50   Median : 4.000   MICU :4309  
 ##  Mean   :63.5             Mean   :28.73   Mean   : 4.543   NICU :   0  
 ##  3rd Qu.:76.0             3rd Qu.:31.73   3rd Qu.: 6.000   SICU :2377  
 ##  Max.   :89.0             Max.   :99.64   Max.   :21.000   TSICU:1671  
@@ -621,7 +646,7 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
 ##  gender 0.4861687
-##  bmi 7.230637
+##  bmi 7.230631
 ##  sofatotal 3.148155</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
@@ -651,7 +676,7 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
 ##  gender 0.4901356
-##  bmi 7.767437
+##  bmi 7.767395
 ##  sofatotal 3.372926</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
@@ -666,9 +691,9 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 <pre><code>## [1] 1.689414</code></pre>
 <pre class="r"><code>summary(pat_MIMIC_subset$prop)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##  0.0000  0.5733  0.6972  0.6656  0.7917  1.0000</code></pre>
+##  0.0000  0.4110  0.5588  0.5335  0.6770  0.9798</code></pre>
 <pre class="r"><code>sd(pat_MIMIC_subset$prop)</code></pre>
-<pre><code>## [1] 0.1709988</code></pre>
+<pre><code>## [1] 0.1875104</code></pre>
 </div>
 </div>
 <div id="model-fitting" class="section level1">
@@ -682,17 +707,56 @@ point_size &lt;- 10 # Per Lancet instructions
 
 logistic &lt;- function(x) 1/(1+exp(-x))
 
-gam_plotMed &lt;- function(gamfitMed,
+
+
+# Function that adds labels to subfigures, edited from:
+# https://logfc.wordpress.com/2017/03/15/adding-figure-labels-a-b-c-in-the-top-left-corner-of-the-plotting-region/
+fig_label &lt;- function(label) {
+    cex &lt;- 2
+    ds &lt;- dev.size(&quot;in&quot;)
+    # xy coordinates of device corners in user coordinates
+    x &lt;- grconvertX(c(0, ds[1]), from=&quot;in&quot;, to=&quot;user&quot;)
+    y &lt;- grconvertY(c(0, ds[2]), from=&quot;in&quot;, to=&quot;user&quot;)
+    
+    # fragment of the device we use to plot
+      # account for the fragment of the device that 
+      # the figure is using
+      fig &lt;- par(&quot;fig&quot;)
+      dx &lt;- (x[2] - x[1])
+      dy &lt;- (y[2] - y[1])
+      x &lt;- x[1] + dx * fig[1:2]
+      y &lt;- y[1] + dy * fig[3:4]
+  
+  
+  sw &lt;- strwidth(label, cex=cex) * 60/100
+  sh &lt;- strheight(label, cex=cex) * 60/100
+  
+  x1 &lt;- x[1] + sw
+  
+  y1 &lt;- y[2] - sh
+  
+  old.par &lt;- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1, y1, label, cex=cex)
+}
+
+
+
+
+gam_plotMed &lt;- function(
+                    gamfitMed,
                     main = &quot;Median of measurements&quot;,
                     xRange = c(92, 100),
-                    yRange = c(0, .4)
+                    yRange = c(0, .4),
+                    label
 ) {
 print(paste(&quot;Number of cases:&quot;, summary(gamfitMed)$n))
 
 xlab &lt;- expression(&quot;Median oxygen saturation (SpO&quot;[2]*&quot;)&quot;)
 ylab &lt;- &quot;Probability of hospital mortality&quot; 
 
-xName &lt;- &quot;median&quot;
+xName &lt;- colnames(gamfitMed$model)[grep(&quot;med&quot;, colnames(gamfitMed$model))]
 
 # Color for dotted line
 colD &lt;- &quot;Black&quot;
@@ -745,11 +809,19 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
     lines(x = xx, y = ucl, lty = 2, lwd = 2)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3)
   }
+  
+  if(!missing(label)) fig_label(label)
 }
 
 
 
-gam_plotProp &lt;- function(gamfitProp, main = &quot;Effect of treatment regime&quot;, yRange = c(0, .3), add = FALSE, col = &quot;black&quot;){
+gam_plotProp &lt;- function(
+  gamfitProp,
+  main = &quot;Effect of treatment regime&quot;,
+  yRange = c(0, .3),
+  add = FALSE, col = &quot;black&quot;,
+  label
+){
   print(paste(&quot;Number of cases:&quot;, summary(gamfitProp)$n))
   
   xName &lt;- colnames(gamfitProp$model)[grep(&quot;prop&quot;, colnames(gamfitProp$model))]
@@ -818,6 +890,8 @@ gam_plotProp &lt;- function(gamfitProp, main = &quot;Effect of treatment regime&
     lines(x = xx, y = ucl, lty = 2, lwd = 2, col = col)
     lines(xx, predictionsPlusCI$fit[ord.index], lwd = 3, col = col)
   }
+  
+  if(!missing(label)) fig_label(label)
 }</code></pre>
 <div id="median-of-measurements" class="section level2">
 <h2>Median of measurements</h2>
@@ -831,14 +905,14 @@ gam_plotProp &lt;- function(gamfitProp, main = &quot;Effect of treatment regime&
 <pre><code>## iteration 4</code></pre>
 <pre><code>## iteration 5</code></pre>
 <pre class="r"><code>gamfitMed_MIMIC &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_v1.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/med_v2.pdf&quot;, width = plot_width,
     height = 3, pointsize = point_size, family = font)
 
 par(mfcol = c(1,2), cex = 1)
 
-gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;)</code></pre>
+gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
-<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC, main = &quot;MIMIC&quot;)</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
@@ -871,7 +945,7 @@ gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;)</code></pre>
 gamfitProp_below_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
 
 gamfitProp_above_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_v1.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/prop_v2.pdf&quot;, width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfcol = c(2,2), cex = 1)
 
@@ -901,7 +975,7 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## R-sq.(adj) =  0.0884   
 ##   Scale est. = 1         n = 17241</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_eICU, main = &quot;eICU-CRD&quot;)</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_below_eICU)</code></pre>
 <pre><code>## 
@@ -930,7 +1004,7 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## R-sq.(adj) =  0.0861   
 ##   Scale est. = 1         n = 17241</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_below_eICU, main = &quot;&quot;)</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_below_eICU, main = &quot;&quot;, label = &quot;C&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_above_eICU)</code></pre>
 <pre><code>## 
@@ -971,23 +1045,23 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
-## (Intercept) -1.85183    0.05235 -35.375   &lt;2e-16 ***
-## genderM     -0.09700    0.06696  -1.449    0.147    
+## (Intercept) -1.85775    0.05245 -35.419   &lt;2e-16 ***
+## genderM     -0.08139    0.06708  -1.213    0.225    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
 ##                edf Ref.df Chi.sq p-value    
-## s(prop)      3.881  4.845 108.90 &lt; 2e-16 ***
-## s(age)       2.301  2.887  83.58 &lt; 2e-16 ***
-## s(bmi)       7.047  8.100  24.47 0.00203 ** 
-## s(sofatotal) 4.235  5.215 338.61 &lt; 2e-16 ***
+## s(prop)      6.792  7.910 100.31  &lt;2e-16 ***
+## s(age)       2.269  2.848  80.05  &lt;2e-16 ***
+## s(bmi)       6.961  8.033  24.15  0.0022 ** 
+## s(sofatotal) 4.183  5.155 339.65  &lt;2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.075   Deviance explained = 8.05%
-## UBRE = -0.22549  Scale est. = 1         n = 8209</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC, main = &quot;MIMIC&quot;)</code></pre>
+## R-sq.(adj) =  0.0726   Deviance explained = 7.95%
+## UBRE = -0.22393  Scale est. = 1         n = 8209</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_below_MIMIC)</code></pre>
 <pre><code>## 
@@ -1001,22 +1075,22 @@ summary(gamfitProp_eICU)</code></pre>
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
 ## (Intercept)  -1.8388     0.0526 -34.959   &lt;2e-16 ***
-## genderM      -0.1639     0.0675  -2.428   0.0152 *  
+## genderM      -0.1639     0.0675  -2.429   0.0152 *  
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
 ##                edf Ref.df Chi.sq  p-value    
-## s(propBelow) 2.118  2.668 224.56  &lt; 2e-16 ***
-## s(age)       2.448  3.069  69.40 8.49e-15 ***
-## s(bmi)       7.206  8.223  48.15 1.24e-07 ***
+## s(propBelow) 2.121  2.671 224.57  &lt; 2e-16 ***
+## s(age)       2.448  3.068  69.38 8.56e-15 ***
+## s(bmi)       7.199  8.218  48.14 1.24e-07 ***
 ## s(sofatotal) 4.044  4.996 323.26  &lt; 2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## R-sq.(adj) =  0.0945   Deviance explained = 9.59%
 ## UBRE = -0.23878  Scale est. = 1         n = 8209</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_below_MIMIC, main = &quot;&quot;)</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_below_MIMIC, main = &quot;&quot;, label = &quot;D&quot;)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_above_MIMIC)</code></pre>
 <pre><code>## 
@@ -1029,22 +1103,22 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
-## (Intercept) -1.80947    0.05162 -35.054   &lt;2e-16 ***
-## genderM     -0.13248    0.06666  -1.987   0.0469 *  
+## (Intercept) -1.81959    0.05189 -35.067   &lt;2e-16 ***
+## genderM     -0.12380    0.06685  -1.852    0.064 .  
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
 ##                edf Ref.df Chi.sq  p-value    
-## s(propAbove) 5.597  6.752  48.80 2.65e-08 ***
-## s(age)       2.328  2.921  72.08 2.45e-15 ***
-## s(bmi)       6.920  8.000  39.26 4.40e-06 ***
-## s(sofatotal) 4.142  5.107 346.97  &lt; 2e-16 ***
+## s(propAbove) 6.848  7.950  65.76 4.18e-11 ***
+## s(age)       2.344  2.941  73.21 1.28e-15 ***
+## s(bmi)       6.969  8.039  37.40 1.00e-05 ***
+## s(sofatotal) 4.103  5.064 346.37  &lt; 2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0662   Deviance explained =  7.2%
-## UBRE = -0.21797  Scale est. = 1         n = 8209</code></pre>
+## R-sq.(adj) =  0.0679   Deviance explained = 7.41%
+## UBRE = -0.21944  Scale est. = 1         n = 8209</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_above_MIMIC, main = &quot;&quot;, col = &quot;blue&quot;, add = TRUE)</code></pre>
 <pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
@@ -1120,12 +1194,12 @@ summary(gamfitProp_eICU)</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_above_eICU, data = pat_eICU_subset)</code></pre>
 <pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8753307 (95% CI 0.8548648 to 0.8962865).</code></pre>
 <pre class="r"><code>computeCI(gamfitMed_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.081194 (95% CI 1.019714 to 1.14638).
-## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 5.301955 (95% CI 4.396526 to 6.393849).</code></pre>
+<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.081123 (95% CI 1.019635 to 1.146319).
+## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 5.301886 (95% CI 4.396393 to 6.393878).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 2.164611 (95% CI 2.244326 to 2.087727).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 1.996019 (95% CI 1.891065 to 2.106797).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_above_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8863937 (95% CI 0.7460999 to 1.053068).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.7940187 (95% CI 0.7356068 to 0.8570689).</code></pre>
 <p>Same as above but now without adjusting for covariates</p>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(median), data = pat_eICU_subset, family = binomial)
 computeCI(tmp, data = pat_eICU_subset)</code></pre>
@@ -1143,10 +1217,576 @@ computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
 ## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 7.036674 (95% CI 4.92764 to 10.04838).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(prop), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 2.078369 (95% CI 2.109454 to 2.047742).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 1.977825 (95% CI 1.839609 to 2.126427).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(propAbove), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8945983 (95% CI 0.7469318 to 1.071458).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8039281 (95% CI 0.7441187 to 0.8685448).</code></pre>
+<p>We also compute the estimted mortality after categorizing <code>prop</code> into 3 groups.</p>
+<pre class="r"><code>pat_eICU_subset$prop_cat &lt;- as.factor((pat_eICU_subset$prop &gt;= .4) + (pat_eICU_subset$prop &gt;= .8))
+levels(pat_eICU_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
+
+
+tab3 &lt;- gamm(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>tmp &lt;- predict(tab3, newdata = data.frame(
+  prop_cat = levels(pat_eICU_subset$prop_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
+<pre><code>##          1          2          3 
+## 0.16936345 0.10741246 0.06560368</code></pre>
+<pre class="r"><code>logistic(tmp$fit)</code></pre>
+<pre><code>##          1          2          3 
+## 0.18833103 0.11963694 0.08253824</code></pre>
+<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
+<pre><code>##         1         2         3 
+## 0.2088886 0.1330453 0.1033606</code></pre>
+<pre class="r"><code># Same for MIMIC
+
+pat_MIMIC_subset$prop_cat &lt;- as.factor((pat_MIMIC_subset$prop &gt;= .4) + (pat_MIMIC_subset$prop &gt;= .8))
+levels(pat_MIMIC_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
+
+
+tab3 &lt;- gam(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+tmp &lt;- predict(tab3, newdata = data.frame(
+  prop_cat = levels(pat_MIMIC_subset$prop_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
+<pre><code>##          1          2          3 
+## 0.12958986 0.07757577 0.05058002</code></pre>
+<pre class="r"><code>logistic(tmp$fit)</code></pre>
+<pre><code>##          1          2          3 
+## 0.15377632 0.09153534 0.07221279</code></pre>
+<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
+<pre><code>##         1         2         3 
+## 0.1815354 0.1077136 0.1021028</code></pre>
+<pre class="r"><code>pat_MIMIC_subset$prop_cat &lt;- as.factor((pat_MIMIC_subset$prop &gt;= .4) + (pat_MIMIC_subset$prop &gt;= .8))
+levels(pat_MIMIC_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
+
+
+# Now with propAbove
+
+pat_MIMIC_subset$propAbove_cat &lt;- as.factor((pat_MIMIC_subset$propAbove &gt;= .4) + (pat_MIMIC_subset$propAbove &gt;= .8))
+levels(pat_MIMIC_subset$propAbove_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
+
+tab3 &lt;- gam(mortality_in_Hospt ~ propAbove_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+tmp &lt;- predict(tab3, newdata = data.frame(
+  propAbove_cat = levels(pat_MIMIC_subset$propAbove_cat),
+  gender = 'F',
+  age = median(tab3$model$age),
+  bmi = median(tab3$model$bmi),
+  sofatotal = median(tab3$model$sofatotal)
+), type = 'link', se.fit= TRUE)
+logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
+<pre><code>##          1          2          3 
+## 0.08826377 0.08894030 0.08336035</code></pre>
+<pre class="r"><code>logistic(tmp$fit)</code></pre>
+<pre><code>##         1         2         3 
+## 0.1040842 0.1058075 0.1133983</code></pre>
+<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
+<pre><code>##         1         2         3 
+## 0.1223597 0.1254330 0.1524597</code></pre>
+</div>
+<div id="supplement" class="section level2">
+<h2>Supplement</h2>
+<p>Let us now create additional plots for the supplement.</p>
+<div id="sensitivity-analysis" class="section level3">
+<h3>Sensitivity analysis</h3>
+<p>APACHE score instead of SOFA score as control.</p>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_APACHE_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16059&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_APACHE_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16059&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Only considering the first 24, 48, or 72 hours of a ventilation session when it comes to SpO2.</p>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_24_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16429&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8184&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_24_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16429&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8184&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_48_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16380&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8198&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_48_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16380&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8198&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre><code>## iteration 5</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_72_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16153&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8200&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_72_v2.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 16153&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8200&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+</div>
+<div id="subgroup-analysis" class="section level3">
+<h3>Subgroup analysis</h3>
+<p>Split by ventilation type</p>
+<pre class="r"><code>gamfitMed_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre><code>## iteration 5</code></pre>
+<pre><code>## iteration 6</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp_2 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre><code>## iteration 5</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp_1 &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitMed_MIMIC_tmp_2 &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)
+
+
+gamfitProp_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_eICU_tmp_2 &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp_1 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitProp_MIMIC_tmp_2 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_vent_type_v2.pdf&quot;, width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfcol = c(2,2), cex = 1)
+
+vent_type_2 &lt;- &quot;Supplemental oxygen\nor non-invasive ventilation&quot;
+
+gam_plotMed(gamfitMed_eICU_tmp_1, main = &quot;eICU-CRD\nInvasive ventilation&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 12424&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_eICU_tmp_2, main = vent_type_2, label = &quot;C&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1927&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp_1, main = &quot;MIMIC\nInvasive ventilation&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 7666&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp_2, main = vent_type_2, label = &quot;D&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 538&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_vent_type_v2.pdf&quot;, width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+par(mfcol = c(2,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp_1, main = &quot;eICU-CRD\nInvasive ventilation&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 12424&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_eICU_tmp_2, main = vent_type_2, label = &quot;C&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1927&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp_1, main = &quot;MIMIC\nInvasive ventilation&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 7666&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp_2, main = vent_type_2, label = &quot;D&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 538&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Look at different ICU types.</p>
+<pre class="r"><code># Matrix with order and &quot;pretty&quot; names for ICU types
+mat &lt;- matrix(NA_character_, nrow = 5, ncol = 4)
+mat[1,] &lt;- c(&quot;Cardiac ICU&quot;, &quot;CSRU&quot;, &quot;eICU-CRD\nCardiac ICU&quot;, &quot;MIMIC\nCardiac surgery recovery unit&quot;)
+mat[2,] &lt;- c(&quot;MICU&quot;, &quot;MICU&quot;, &quot;Medical ICU&quot;, &quot;Medical ICU&quot;)
+mat[3,] &lt;- c(&quot;SICU&quot;, &quot;SICU&quot;, &quot;Surgical ICU&quot;, &quot;Surgical ICU&quot;)
+mat[4,] &lt;- c(&quot;Med-Surg ICU&quot;, &quot;CCU&quot;, &quot;Medical-surgical ICU&quot;, &quot;Coronary care unit&quot;)
+mat[5,] &lt;- c(&quot;Neuro ICU&quot;, &quot;TSICU&quot;, &quot;Neuro ICU&quot;, &quot;Trauma/surgical ICU&quot;)
+
+
+
+pdf(file = &quot;Figures/med_ICU_type_v2.pdf&quot;, width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(5,2), cex = 1)
+
+for(i in 1:5) {
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+            main = mat[i,3], label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+            main = mat[i,4], label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
+
+}</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4388&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2957&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1670&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1845&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1519&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1315&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8162&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1106&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1502&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 986&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_ICU_type_v2.pdf&quot;, width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(5,2), cex = 1)
+
+for(i in 1:5) {
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+            main = mat[i,3], label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+            main = mat[i,4], label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
+
+}</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4388&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2957&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1670&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1845&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1519&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1315&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8162&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1106&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1502&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 986&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Split by ethnicity</p>
+<pre class="r"><code># Matrix with order and &quot;pretty&quot; names for ethnicities
+n_cat &lt;- 4
+mat &lt;- matrix(NA_character_, nrow = n_cat, ncol = 2)
+mat[1,] &lt;- c(&quot;Caucasian&quot;, &quot;Caucasian&quot;)
+mat[2,] &lt;- c(&quot;African American&quot;, &quot;African-American&quot;)
+mat[3,] &lt;- c(&quot;Hispanic&quot;, &quot;Hispanic&quot;)
+mat[4,] &lt;- c(&quot;Asian&quot;, &quot;Asian&quot;)
+
+
+
+pdf(file = &quot;Figures/med_ethnicity_v2.pdf&quot;, width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(n_cat,2), cex = 1)
+
+for(i in 1:n_cat) {
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, &quot;eICU-CRD\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, &quot;MIMIC\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
+
+}</code></pre>
+<pre><code>## [1] &quot;Number of cases: 13464&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 5804&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2005&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 443&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 636&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 241&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 170&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 155&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_ethnicity_v2.pdf&quot;, width = plot_width,
+    height = 12, pointsize = point_size, family = font)
+
+par(mfrow = c(n_cat,2), cex = 1)
+
+for(i in 1:n_cat) {
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, &quot;eICU-CRD\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+            main = paste0(ifelse(i == 1, &quot;MIMIC\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
+
+}</code></pre>
+<pre><code>## [1] &quot;Number of cases: 13464&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 5804&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2005&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 443&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 636&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 241&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 170&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 155&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Split up by whether certain diagnosis was present.</p>
+<pre class="r"><code># Matrix with order and variable/file names for diagnoses
+n_cat &lt;- 10
+mat &lt;- matrix(NA_character_, nrow = n_cat, ncol = 2)
+mat[1,] &lt;- c(&quot;has_atrial_fibrillation_disease&quot;, &quot;AF&quot;)
+mat[2,] &lt;- c(&quot;has_cancer_disease&quot;, &quot;cancer&quot;)
+mat[3,] &lt;- c(&quot;CHF&quot;, &quot;CHF&quot;)
+mat[4,] &lt;- c(&quot;CKD&quot;, &quot;CKD&quot;)
+mat[5,] &lt;- c(&quot;has_chronic_liver_disease&quot;, &quot;CLD&quot;)
+mat[6,] &lt;- c(&quot;has_copd_disease&quot;, &quot;COPD&quot;)
+mat[7,] &lt;- c(&quot;has_diabetes_mellitus_disease&quot;, &quot;diabetes&quot;)
+mat[8,] &lt;- c(&quot;has_hypertension_disease&quot;, &quot;hypertension&quot;)
+mat[9,] &lt;- c(&quot;has_sepsis&quot;, &quot;sepsis&quot;)
+mat[10,] &lt;- c(&quot;has_stroke_disease&quot;, &quot;stroke&quot;)
+
+for(i in 1:n_cat) {
+  print(i)
+  print(mat[i,])
+
+pdf(file = paste0(&quot;Figures/&quot;, mat[i,2], &quot;_v2.pdf&quot;), width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfrow = c(2,2), cex = 1)
+
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+            main = &quot;eICU-CRD&quot;, label = &quot;A&quot;, yRange = 0:1)
+
+gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+            main = &quot;MIMIC&quot;, label = &quot;B&quot;, yRange = 0:1)
+
+
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+            main = &quot;&quot;, label = &quot;C&quot;, yRange = 0:1)
+
+gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+            main = &quot;&quot;, label = &quot;D&quot;, yRange = 0:1)
+
+
+dev.off()
+}</code></pre>
+<pre><code>## [1] 1
+## [1] &quot;has_atrial_fibrillation_disease&quot; &quot;AF&quot;                             
+## [1] &quot;Number of cases: 3018&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3668&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3018&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3668&quot;</code></pre>
+<pre><code>## [1] 2
+## [1] &quot;has_cancer_disease&quot; &quot;cancer&quot;            
+## [1] &quot;Number of cases: 852&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 940&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 852&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 940&quot;</code></pre>
+<pre><code>## [1] 3
+## [1] &quot;CHF&quot; &quot;CHF&quot;
+## [1] &quot;Number of cases: 1827&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2511&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1827&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2511&quot;</code></pre>
+<pre><code>## [1] 4
+## [1] &quot;CKD&quot; &quot;CKD&quot;
+## [1] &quot;Number of cases: 1366&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 843&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1366&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 843&quot;</code></pre>
+<pre><code>## [1] 5
+## [1] &quot;has_chronic_liver_disease&quot; &quot;CLD&quot;                      
+## [1] &quot;Number of cases: 198&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 515&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 198&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 515&quot;</code></pre>
+<pre><code>## [1] 6
+## [1] &quot;has_copd_disease&quot; &quot;COPD&quot;            
+## [1] &quot;Number of cases: 1972&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1599&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1972&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1599&quot;</code></pre>
+<pre><code>## [1] 7
+## [1] &quot;has_diabetes_mellitus_disease&quot; &quot;diabetes&quot;                     
+## [1] &quot;Number of cases: 316&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2267&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 316&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2267&quot;</code></pre>
+<pre><code>## [1] 8
+## [1] &quot;has_hypertension_disease&quot; &quot;hypertension&quot;            
+## [1] &quot;Number of cases: 2110&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4596&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2110&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4596&quot;</code></pre>
+<pre><code>## [1] 9
+## [1] &quot;has_sepsis&quot; &quot;sepsis&quot;    
+## [1] &quot;Number of cases: 1809&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1292&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1809&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1292&quot;</code></pre>
+<pre><code>## [1] 10
+## [1] &quot;has_stroke_disease&quot; &quot;stroke&quot;            
+## [1] &quot;Number of cases: 379&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 361&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 379&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 361&quot;</code></pre>
+</div>
+<div id="histograms-of-proportions" class="section level3">
+<h3>Histograms of proportions</h3>
+<pre class="r"><code>pdf(file = &quot;Figures/hist_v2.pdf&quot;, width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfcol = c(2,2), cex = 1)
+
+xlab1 &lt;- expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements within 94% to 98%&quot;)
+xlab2 &lt;- expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements above 98%&quot;)
+
+brks &lt;- seq(from = 0, to = 1, by = .02)
+hist(pat_eICU_subset$prop, breaks = brks, main = &quot;eICU-CRD&quot;, xlab = xlab1)
+fig_label(&quot;A&quot;)
+hist(pat_eICU_subset$propAbove, breaks = brks, xlab = xlab2, main = &quot;&quot;)
+fig_label(&quot;C&quot;)
+
+hist(pat_MIMIC_subset$prop, breaks = brks, main = &quot;MIMIC&quot;, xlab = xlab1)
+fig_label(&quot;B&quot;)
+hist(pat_MIMIC_subset$propAbove, breaks = brks, xlab= xlab2, main = &quot;&quot;)
+fig_label(&quot;D&quot;)
+
+dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+</div>
 </div>
 </div>
 
