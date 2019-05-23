@@ -118,7 +118,7 @@ OR cplitemvalue = "End of life"
     END) AS max_fiO2
     , chart.patientunitstayid AS icustay_id
   FROM `oxygenators-209612.eicu.respiratorycharting` AS chart
-    LEFT JOIN oxygen_therapy
+    INNER JOIN oxygen_therapy
     ON chart.patientunitstayid = oxygen_therapy.icustay_id
   WHERE
   	-- Indicates fiO2 record

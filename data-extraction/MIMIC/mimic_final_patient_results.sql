@@ -15,7 +15,7 @@ SELECT
   icu.intime as ICU_intime,
   admissions.ethnicity
 FROM `oxygenators-209612.mimiciii_clinical.icustays` AS icu
-LEFT JOIN `oxygenators-209612.mimiciii_clinical.admissions` AS admissions
+INNER JOIN `oxygenators-209612.mimiciii_clinical.admissions` AS admissions
   ON icu.hadm_id = admissions.hadm_id),
 
 
@@ -35,7 +35,7 @@ SELECT
    END) AS max_fiO2,
   chart.icustay_id
 FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
-LEFT JOIN oxygen_therapy
+INNER JOIN oxygen_therapy
 ON chart.icustay_id = oxygen_therapy.icustay_id
 WHERE chart.itemid in (3420, 190, 223835, 3422) -- Indicates fiO2 record
 -- We are only interested in measurements during the oxygen therapy session.
