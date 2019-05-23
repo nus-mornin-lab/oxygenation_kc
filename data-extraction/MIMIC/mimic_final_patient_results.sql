@@ -70,7 +70,7 @@ AND chart.valuenum >= 10 AND chart.valuenum <= 100
 SELECT DISTINCT
     ce.icustay_id
     -- We currently ignore the time aspect of the measurements.
-    -- However, one idally should take into account that
+    -- However, one ideally should take into account that
     -- certain measurements are less spread out than others.
   , COUNT(ce.spO2_Value) OVER(PARTITION BY ce.icustay_id) AS nOxy
   , PERCENTILE_CONT(ce.spO2_Value, 0.5) OVER(PARTITION BY ce.icustay_id) AS median
