@@ -201,18 +201,19 @@ vd0 as
 , vd3 AS
 (
 select icustay_id
+  , ventnum
   , max(charttime) as vent_end
   , min(charttime) as vent_start
   , max(type) as type
 from vd2
-where ventnum = 1
-group by icustay_id
+group by icustay_id, ventnum
 )
 
 -- If the last record was not extubation, add an hour to vent_duration as the oxygen therapy probably continued for longer
 , vd4 AS
 (
 select icustay_id, type AS oxygen_therapy_type
+  , ventnum
   , vent_start
   , CASE
 	WHEN last_extubation = vent_end THEN vent_end -- Last record was extubation
@@ -223,8 +224,8 @@ SELECT
 icustay_id AS extub_id,
 max(charttime) as last_extubation
 FROM vd2
-WHERE Extubated = 1 AND ventnum = 1
-GROUP BY icustay_id
+WHERE Extubated = 1
+GROUP BY icustay_id, ventnum
 )
 ON vd3.icustay_id = extub_id
 )
@@ -232,4 +233,5 @@ ON vd3.icustay_id = extub_id
 select vd4.*
   -- We use `MINUTE` here as `HOUR` would result in the difference of 1.59pm and 2.01pm to be recorded as 1 hour.
 	, DATETIME_DIFF(vent_end, vent_start, MINUTE)/60 AS vent_duration
+  , MIN(vent_start) OVER(PARTITION BY icustay_id) AS vent_start_first
 from vd4

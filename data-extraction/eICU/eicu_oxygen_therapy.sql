@@ -293,6 +293,7 @@ WITH respchart AS (
 , vd3 AS
 (
 	SELECT icustay_id
+		, ventnum
 		, CASE
 			-- If activeUponDischarge, then the unit discharge time is vent_end
 			WHEN (
@@ -314,12 +315,12 @@ WITH respchart AS (
 	FROM vd2
 		LEFT JOIN pat
 		ON vd2.icustay_id = pat.patientunitstayid
-	WHERE ventnum = 1
-	GROUP BY icustay_id
+	GROUP BY icustay_id, ventnum
 )
 
 
 select vd3.*
 	-- vent_duration is in hours.
 	, (vent_end - vent_start) / 60 AS vent_duration
+	, MIN(vent_start) OVER(PARTITION BY icustay_id) AS vent_start_first
 from vd3
