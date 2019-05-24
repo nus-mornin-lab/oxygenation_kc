@@ -107,38 +107,15 @@ OR cplitemvalue = "End of life"
 )
 
 
-, vent_duration AS (
+-- Aggregate `oxygen_therapy` per ICU stay.
+, o_t AS (
   SELECT
     icustay_id
     , SUM(vent_duration) AS vent_duration
+    , MAX(oxygen_therapy_type) AS oxygen_therapy_type
+    , MAX(supp_oxygen) AS supp_oxygen
   FROM oxygen_therapy
   GROUP BY icustay_id
-)
-
-
--- Extract maximum fraction of inspired oxygen (fiO2) during oxygen therpay of each ICU stay
-, fiO2 AS (
-  SELECT
-    MAX(CASE
-      -- fiO2 is sometimes recorded as a fraction and sometimes as a percentage.
-      -- We transform fiO2 into percentages.
-      WHEN SAFE_CAST(chart.respchartvalue AS FLOAT64) <= 1 THEN 100*SAFE_CAST(chart.respchartvalue AS FLOAT64)
-      ELSE SAFE_CAST(chart.respchartvalue AS FLOAT64)
-    END) AS max_fiO2
-    , chart.patientunitstayid AS icustay_id
-  FROM `oxygenators-209612.eicu.respiratorycharting` AS chart
-    INNER JOIN oxygen_therapy
-    ON chart.patientunitstayid = oxygen_therapy.icustay_id
-    -- We are only interested in measurements during oxygen therapy sessions.
-    -- Note that this is superfluous since we used fiO2 as an indicator of oxygen therapy.
-    AND chart.respchartoffset >= oxygen_therapy.vent_start
-    AND chart.respchartoffset <= oxygen_therapy.vent_end
-  WHERE
-    -- Indicates fiO2 record
-    LOWER(chart.respchartvaluelabel) IN ('fio2', 'fio2 (%)')
-    -- fiO2 cannot be greater than 100%.
-    AND SAFE_CAST(chart.respchartvalue AS FLOAT64) <= 100
-  GROUP BY chart.patientunitstayid
 )
 
 
@@ -251,8 +228,7 @@ SELECT
   fluid_balance.* EXCEPT(patientunitstayid),
   sofa_results.* EXCEPT(patientunitstayid),
   IF(end_of_life.patientunitstayid IS NULL, FALSE, TRUE) as end_of_life
-	, vent_duration.vent_duration
-	, fiO2.max_fiO2
+	, o_t.* EXCEPT(icustay_id)
 	, SpO2.* EXCEPT(icustay_id)
   , SpO2_24.* EXCEPT(icustay_id)
   , SpO2_48.* EXCEPT(icustay_id)
@@ -268,10 +244,8 @@ LEFT JOIN sofa_results
   ON pat.patientunitstayid = sofa_results.patientunitstayid
 LEFT JOIN end_of_life
   ON pat.patientunitstayid = end_of_life.patientunitstayid
-LEFT JOIN vent_duration
-  ON pat.patientunitstayid = vent_duration.icustay_id
-LEFT JOIN fiO2
-  ON pat.patientunitstayid = fiO2.icustay_id
+LEFT JOIN o_t
+  ON pat.patientunitstayid = o_t.icustay_id
 LEFT JOIN SpO2
   ON pat.patientunitstayid = SpO2.icustay_id
 LEFT JOIN SpO2_24

@@ -24,39 +24,15 @@ SELECT * FROM `oxygenators-209612.mimiciii_clinical.mimic_oxygen_therapy`
 )
 
 
-, vent_duration AS (
+-- Aggregate `oxygen_therapy` per ICU stay.
+, o_t AS (
   SELECT
     icustay_id
     , SUM(vent_duration) AS vent_duration
+    , MAX(oxygen_therapy_type) AS oxygen_therapy_type
+    , MAX(supp_oxygen) AS supp_oxygen
   FROM oxygen_therapy
   GROUP BY icustay_id
-)
-
-
--- Extract maximum fraction of inspired oxygen (fiO2) during oxygen therapy of each ICU stay
-, fiO2 AS (
-  SELECT
-    MAX(CASE
-      -- fiO2 is sometimes recorded as a fraction and sometimes as a percentage.
-      -- We transform max_fiO2 into percentages.
-      WHEN chart.valuenum <= 1 THEN 100*chart.valuenum
-      ELSE chart.valuenum
-    END) AS max_fiO2
-    , chart.icustay_id
-  FROM `oxygenators-209612.mimiciii_clinical.chartevents` AS chart
-    INNER JOIN oxygen_therapy
-    ON chart.icustay_id = oxygen_therapy.icustay_id
-    -- We are only interested in measurements during the oxygen therapy session.
-    -- Note that this is superfluous since we used fiO2 as an indicator of oxygen therapy.
-    AND chart.charttime >= oxygen_therapy.vent_start
-    AND chart.charttime <= oxygen_therapy.vent_end
-  WHERE chart.itemid in (3420, 190, 223835, 3422) -- Indicates fiO2 record
-    -- We exclude measurements marked as errors.
-    AND (chart.error <> 1 OR chart.error IS NULL)
-    -- fiO2 cannot be greater than 100%.
-    -- Removing the next line would yield 25 ICU stays with a max_fiO2 above 100%.
-    AND chart.valuenum <= 100
-  GROUP BY chart.icustay_id
 )
 
 
@@ -276,8 +252,7 @@ SAFE_CAST(heightweight.weight_first AS FLOAT64) as weight,
 icu.first_careunit as unittype,
 -- edited from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/demographics/icustay-detail.sql:
 DENSE_RANK() OVER (PARTITION BY icu.subject_id ORDER BY icu.intime) = 1 AS first_stay
-, vent_duration.vent_duration
-, fiO2.max_fiO2
+, o_t.* EXCEPT(icustay_id)
 , SpO2.* EXCEPT(icustay_id)
 , SpO2_24.* EXCEPT(icustay_id)
 , SpO2_48.* EXCEPT(icustay_id)
@@ -301,10 +276,8 @@ LEFT JOIN `oxygenators-209612.mimiciii_clinical.mechanical_ventilative_volume` m
   ON icu.icustay_id = mech_vent.icustay_id
 LEFT JOIN heightweight
   ON icu.icustay_id = heightweight.icustay_id
-LEFT JOIN vent_duration
-  ON icu.icustay_id = vent_duration.icustay_id
-LEFT JOIN fiO2
-  ON icu.icustay_id = fiO2.icustay_id
+LEFT JOIN o_t
+  ON icu.icustay_id = o_t.icustay_id
 LEFT JOIN SpO2
   ON icu.icustay_id = SpO2.icustay_id
 LEFT JOIN SpO2_24

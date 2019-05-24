@@ -9,13 +9,13 @@
 
 
 -- First, create a temporary table to store relevant data from CHARTEVENTS.
-WITH ventsettings AS (
+WITH ventsettings0 AS (
 select
   icustay_id, charttime
   -- case statement determining what type of oxygen therapy it is.
 	-- type indicates whether the entry suggests invasive ventilation (4), noninvasive ventilation (3), either invasive or noninvasive ventilation (2), supplemental oxygen (1). If the entry does not suggest a type of oxygen therapy, type = 0.
-  , max(
-    case
+  -- If the entry suggests more oxygen administered than room air, then `type = -1`.
+  , case
       when itemid = 720 and value != 'Other/Remarks' THEN 2  -- VentTypeRecorded
       when itemid = 223848 and value != 'Other' THEN 2
       when itemid = 223849 then 2 -- ventilator mode
@@ -80,18 +80,27 @@ select
 	-- Use of tube indicate invasive ventilation
 	when itemid = 640 and value = 'Extubated' then 4
         when itemid = 640 and value = 'Self Extubation' then 4
+
+  -- fiO2 above 22% indicates oxygen therapy,
+  -- i.e. more oxygen than in room air is administered,
+  -- which we record as `type = -1`.
+  WHEN itemid in (3420, 190, 223835, 3422) AND (
+    -- valuenum is above 22
+    valuenum > 22
+  ) OR (
+    -- valuenum is above .22 but less than or equal to 1
+    valuenum > .22
+    AND valuenum <= 1
+  ) THEN -1
+
       else 0
-    end
-    ) as type
-    , max(
-      case when itemid is null or value is null then 0
+    end as type
+    , case when itemid is null or value is null then 0
         -- extubated indicates ventilation event has ended
         when itemid = 640 and value = 'Extubated' then 1
         when itemid = 640 and value = 'Self Extubation' then 1
       else 0
-      end
-      )
-      as Extubated
+      end as Extubated
 from `oxygenators-209612.mimiciii_clinical.chartevents` ce
 where ce.value is not null and icustay_id IS NOT NULL
 -- exclude rows marked as error
@@ -138,7 +147,6 @@ and ( itemid in
 		OR valuenum < .2
 	)
 )
-group by icustay_id, charttime
 UNION DISTINCT
 -- add in the extubation flags from procedureevents_mv
 -- note that we only need the start time for the extubation
@@ -154,9 +162,22 @@ where itemid in
 , 225468 -- "Unplanned Extubation (patient-initiated)"
 , 225477 -- "Unplanned Extubation (non-patient initiated)"
 )
-),
+)
 
-vd0 as
+
+-- Ensure charttime is unique
+, ventsettings AS (
+  SELECT icustay_id
+    , charttime
+    , MAX(type) AS type
+    , MAX(Extubated) AS Extubated
+    , COUNT(CASE WHEN type = -1 THEN 1 END) > 0 AS supp_oxygen
+  FROM ventsettings0
+  GROUP BY icustay_id, charttime
+)
+
+
+, vd0 as
 (
   select
     *
@@ -172,6 +193,7 @@ vd0 as
       , charttime
       , type
       , Extubated
+      , supp_oxygen
 
       -- If the time since the last oxygen therapy event is more than 24 hours,
 	-- we consider that ventilation had ended in between.
@@ -197,7 +219,6 @@ vd0 as
 
 --- now we convert CHARTTIME of ventilator settings into durations
 -- create the durations for each oxygen therapy instance
--- We only keep the first oxygen therapy instance
 , vd3 AS
 (
 select icustay_id
@@ -205,6 +226,7 @@ select icustay_id
   , max(charttime) as vent_end
   , min(charttime) as vent_start
   , max(type) as type
+  , max(supp_oxygen) as supp_oxygen
 from vd2
 group by icustay_id, ventnum
 )
@@ -212,7 +234,7 @@ group by icustay_id, ventnum
 -- If the last record was not extubation, add an hour to vent_duration as the oxygen therapy probably continued for longer
 , vd4 AS
 (
-select icustay_id, type AS oxygen_therapy_type
+select icustay_id, supp_oxygen, type AS oxygen_therapy_type
   , ventnum
   , vent_start
   , CASE
