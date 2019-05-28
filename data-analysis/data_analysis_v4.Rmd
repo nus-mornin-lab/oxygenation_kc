@@ -381,9 +381,9 @@ tmp_IDs <- patient_subset$icustay_id
 
 tmp <- patient_subset$vent_duration >= time_limit
 cat("\nNumber of ICU stays without an oxygen therapy session:", sum(is.na(tmp)))
-cat("\nNumber of ICU stays with a first oxygen therapy session of less than 48 hours:", sum(tmp == FALSE, na.rm = TRUE))
+cat("\nNumber of ICU stays with less than 48 hours of oxygen therapy:", sum(tmp == FALSE, na.rm = TRUE))
 tmp <- which(tmp)
-cat("\nNumber of first ventilations of at least 48 hours:", length(tmp))
+cat("\nNumber of ICU stays with at least 48 hours of oxygen therapy:", length(tmp))
 patient_subset <- patient_subset[tmp,]
 
 
