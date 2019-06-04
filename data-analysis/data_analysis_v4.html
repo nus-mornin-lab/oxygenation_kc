@@ -11,7 +11,7 @@
 
 <meta name="author" content="Willem van den Boom" />
 
-<meta name="date" content="2019-03-11" />
+<meta name="date" content="2019-05-23" />
 
 <title>Oxygen project using both eICU and MIMIC data</title>
 
@@ -124,7 +124,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Oxygen project using both eICU and MIMIC data</h1>
 <h4 class="author"><em>Willem van den Boom</em></h4>
-<h4 class="date"><em>March 11, 2019</em></h4>
+<h4 class="date"><em>May 23, 2019</em></h4>
 
 </div>
 
@@ -450,10 +450,10 @@ cat(&quot;Number of selected patients so far:&quot;, nrow(patient_subset))
 delete &lt;- patient_subset$nOxy &lt; nOxy_limit
 cat(&quot;\nPatients with too few measurements:&quot;, sum(delete), &quot;out of&quot;, nrow(patient_subset))
 
-# Only keep those with fiO2 above 21% at least once during their oxygen therapy session.
-keep &lt;- patient_subset$max_fiO2 &gt; 21
-cat(&quot;\nPatients with no fiO2 recorded:&quot;, sum(is.na(keep)))
-cat(&quot;\nPatients with no fiO2 above 21%:&quot;, sum(keep == FALSE, na.rm = TRUE))
+# Only keep those who received more oxygen than room air
+keep &lt;- patient_subset$supp_oxygen
+cat(&quot;\nPatients with NA for supp_oxygen:&quot;, sum(is.na(keep)))
+cat(&quot;\nPatients with `supp_oxygen` FALSE:&quot;, sum(keep == FALSE, na.rm = TRUE))
 
 patient_subset &lt;- patient_subset[which(!delete &amp; keep),]
 
@@ -489,14 +489,14 @@ tmp &lt;- subset_selection(pat_eICU)</code></pre>
 ## Patients with missing outcome of hospital mortality: 1072
 ## Patients selected so far: 112755
 ## Number of ICU stays without an oxygen therapy session: 22525
-## Number of ICU stays with a first oxygen therapy session of less than 48 hours: 53119
-## Number of first ventilations of at least 48 hours: 37111Number of selected patients so far: 37111
-## Patients with too few measurements: 10560 out of 37111
-## Patients with no fiO2 recorded: 12603
-## Patients with no fiO2 above 21%: 747
-## Patients selected: 17247
-## Cases with supplemental oxygen selected: 47
-## Cases with mechanical ventilation selected: 16135</code></pre>
+## Number of ICU stays with a first oxygen therapy session of less than 48 hours: 50416
+## Number of first ventilations of at least 48 hours: 39814Number of selected patients so far: 39814
+## Patients with too few measurements: 11682 out of 39814
+## Patients with NA for supp_oxygen: 0
+## Patients with `supp_oxygen` FALSE: 4646
+## Patients selected: 26833
+## Cases with supplemental oxygen selected: 695
+## Cases with mechanical ventilation selected: 21779</code></pre>
 <pre class="r"><code>pat_eICU_subset &lt;- tmp[[1]]
 IDs_eICU &lt;- tmp[[2]]
 
@@ -513,35 +513,37 @@ tmp &lt;- subset_selection(pat_MIMIC)</code></pre>
 ## Patients with missing outcome of hospital mortality: 0
 ## Patients selected so far: 18105
 ## Number of ICU stays without an oxygen therapy session: 46
-## Number of ICU stays with a first oxygen therapy session of less than 48 hours: 8297
-## Number of first ventilations of at least 48 hours: 9762Number of selected patients so far: 9762
-## Patients with too few measurements: 8 out of 9762
-## Patients with no fiO2 recorded: 1547
-## Patients with no fiO2 above 21%: 3
-## Patients selected: 8209
-## Cases with supplemental oxygen selected: 537
-## Cases with mechanical ventilation selected: 7672</code></pre>
+## Number of ICU stays with a first oxygen therapy session of less than 48 hours: 8123
+## Number of first ventilations of at least 48 hours: 9936Number of selected patients so far: 9936
+## Patients with too few measurements: 7 out of 9936
+## Patients with NA for supp_oxygen: 0
+## Patients with `supp_oxygen` FALSE: 1368
+## Patients selected: 8564
+## Cases with supplemental oxygen selected: 696
+## Cases with mechanical ventilation selected: 7867</code></pre>
 <pre class="r"><code>pat_MIMIC_subset &lt;- tmp[[1]]
 IDs_MIMIC &lt;- tmp[[2]]
 
 rm(tmp)</code></pre>
 <div id="number-of-unique-hospitals" class="section level2">
 <h2>Number of unique hospitals</h2>
-<p>eICU-CRD covers multiple hospitals. We only keep hospitals with at least 2 cases: Hospital will be used as a random effect. Having hospitals only appear once in the data makes model estimation computationally more challenging.</p>
-<pre class="r"><code>cat(&quot;\n Number of hospitals in current subset:&quot;, length(unique(pat_eICU_subset$hospital_id)))</code></pre>
+<p>eICU-CRD covers multiple hospitals. We only keep hospitals with at least 10 cases: Hospital will be used as a random effect. Having hospitals only appear a few times in the data makes model estimation computationally more challenging.</p>
+<pre class="r"><code>n_hospt &lt;- 10
+
+cat(&quot;\n Number of hospitals in current subset:&quot;, length(unique(pat_eICU_subset$hospital_id)))</code></pre>
 <pre><code>## 
-##  Number of hospitals in current subset: 137</code></pre>
+##  Number of hospitals in current subset: 155</code></pre>
 <pre class="r"><code>tmp &lt;- table(pat_eICU_subset$hospital_id)
-cat(&quot;\n Number of hospitals with at least 2 patients:&quot;, sum(tmp &gt;= 2))</code></pre>
+cat(&quot;\n Number of hospitals with at least n_hospt patients:&quot;, sum(tmp &gt;= n_hospt))</code></pre>
 <pre><code>## 
-##  Number of hospitals with at least 2 patients: 131</code></pre>
-<pre class="r"><code>delete &lt;- pat_eICU_subset$hospital_id %in% as.numeric(names(tmp[tmp &lt; 2]))
+##  Number of hospitals with at least n_hospt patients: 128</code></pre>
+<pre class="r"><code>delete &lt;- pat_eICU_subset$hospital_id %in% as.numeric(names(tmp[tmp &lt; n_hospt]))
 pat_eICU_subset &lt;- pat_eICU_subset[!delete,]
 pat_eICU_subset$hospital_id = as.factor(pat_eICU_subset$hospital_id)
 
 cat(&quot;\n Number of patients in selected subset:&quot;, nrow(pat_eICU_subset))</code></pre>
 <pre><code>## 
-##  Number of patients in selected subset: 17241</code></pre>
+##  Number of patients in selected subset: 26723</code></pre>
 <pre class="r"><code>rm(tmp, delete)</code></pre>
 </div>
 <div id="demographics" class="section level2">
@@ -559,13 +561,13 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##  3rd Qu.:75             3rd Qu.: 33.00   3rd Qu.: 6.000  
 ##  Max.   :89             Max.   :100.00   Max.   :23.000  
 ##                                                          
-##         unit_type          nOxy         mortality_in_Hospt
-##  Cardiac ICU :25247   Min.   :   0.00   Mode :logical     
-##  Med-Surg ICU:62272   1st Qu.:   3.00   FALSE:102338      
-##  MICU        : 9346   Median :  22.00   TRUE :10417       
-##  Neuro ICU   : 8937   Mean   :  66.28                     
-##  SICU        : 6953   3rd Qu.:  69.00                     
-##                       Max.   :4062.00                     
+##         unit_type          nOxy        mortality_in_Hospt
+##  Cardiac ICU :25247   Min.   :   0.0   Mode :logical     
+##  Med-Surg ICU:62272   1st Qu.:   3.0   FALSE:102338      
+##  MICU        : 9346   Median :  24.0   TRUE :10417       
+##  Neuro ICU   : 8937   Mean   :  69.1                     
+##  SICU        : 6953   3rd Qu.:  73.0                     
+##                       Max.   :9463.0                     
 ##                       NA's   :22525</code></pre>
 <pre class="r"><code>for(varname in tmp) cat(&quot;\n&quot;, varname, sd(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,varname]))</code></pre>
 <pre><code>## 
@@ -583,45 +585,45 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##  nOxy NA
 ##  mortality_in_Hospt 0.2895716</code></pre>
 <pre class="r"><code>summary(pat_eICU_subset[,tmp])</code></pre>
-<pre><code>##       age        gender        bmi           sofatotal     
-##  Min.   :16.00   F:7604   Min.   : 15.03   Min.   : 0.000  
-##  1st Qu.:54.00   M:9637   1st Qu.: 24.20   1st Qu.: 5.000  
-##  Median :65.00            Median : 28.56   Median : 7.000  
-##  Mean   :63.23            Mean   : 30.26   Mean   : 7.069  
-##  3rd Qu.:75.00            3rd Qu.: 34.31   3rd Qu.: 9.000  
-##  Max.   :89.00            Max.   :100.00   Max.   :23.000  
-##         unit_type         nOxy        mortality_in_Hospt
-##  Cardiac ICU :4388   Min.   :  24.0   Mode :logical     
-##  Med-Surg ICU:8162   1st Qu.:  83.0   FALSE:14074       
-##  MICU        :1670   Median : 144.0   TRUE :3167        
-##  Neuro ICU   :1502   Mean   : 224.2                     
-##  SICU        :1519   3rd Qu.: 268.0                     
-##                      Max.   :4062.0</code></pre>
+<pre><code>##       age        gender         bmi           sofatotal    
+##  Min.   :16.00   F:12120   Min.   : 15.00   Min.   : 0.00  
+##  1st Qu.:55.00   M:14603   1st Qu.: 24.19   1st Qu.: 4.00  
+##  Median :66.00             Median : 28.48   Median : 6.00  
+##  Mean   :64.26             Mean   : 30.16   Mean   : 6.01  
+##  3rd Qu.:76.00             3rd Qu.: 34.18   3rd Qu.: 8.00  
+##  Max.   :89.00             Max.   :100.00   Max.   :23.00  
+##         unit_type          nOxy        mortality_in_Hospt
+##  Cardiac ICU : 6963   Min.   :  24.0   Mode :logical     
+##  Med-Surg ICU:12400   1st Qu.:  71.0   FALSE:22882       
+##  MICU        : 2613   Median : 116.0   TRUE :3841        
+##  Neuro ICU   : 2545   Mean   : 187.7                     
+##  SICU        : 2202   3rd Qu.: 216.0                     
+##                       Max.   :9463.0</code></pre>
 <pre class="r"><code>for(varname in tmp) cat(&quot;\n&quot;, varname, sd(pat_eICU_subset[,varname]))</code></pre>
 <pre><code>## 
-##  age 15.62772</code></pre>
+##  age 15.37742</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
-##  gender 0.4965262
-##  bmi 9.068275
-##  sofatotal 3.135065</code></pre>
+##  gender 0.4978463
+##  bmi 8.929134
+##  sofatotal 3.358398</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
-##  unit_type 1.189099
-##  nOxy 251.6441
-##  mortality_in_Hospt 0.3872424</code></pre>
+##  unit_type 1.185488
+##  nOxy 228.9621
+##  mortality_in_Hospt 0.3508262</code></pre>
 <pre class="r"><code>summary(pat_eICU_subset$median)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##   67.00   96.00   97.00   97.14   99.00  100.00</code></pre>
+##   67.00   96.00   97.00   96.97   98.50  100.00</code></pre>
 <pre class="r"><code>sd(pat_eICU_subset$median)</code></pre>
-<pre><code>## [1] 2.078519</code></pre>
+<pre><code>## [1] 2.034063</code></pre>
 <pre class="r"><code>summary(pat_eICU_subset$prop)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##  0.0000  0.3603  0.5276  0.5013  0.6587  1.0000</code></pre>
+##  0.0000  0.3919  0.5556  0.5276  0.6827  1.0000</code></pre>
 <pre class="r"><code>sd(pat_eICU_subset$prop)</code></pre>
-<pre><code>## [1] 0.2080327</code></pre>
+<pre><code>## [1] 0.2071741</code></pre>
 <pre class="r"><code>summary(pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC,tmp])</code></pre>
 <pre><code>##       age       gender         bmi          sofatotal      unit_type   
 ##  Min.   :16.0   F: 6937   Min.   :15.04   Min.   : 0.000   CCU  :2815  
@@ -633,11 +635,11 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##                                                                        
 ##       nOxy         mortality_in_Hospt
 ##  Min.   :    0.0   Min.   :0.00000   
-##  1st Qu.:   39.0   1st Qu.:0.00000   
-##  Median :   75.0   Median :0.00000   
-##  Mean   :  162.2   Mean   :0.09848   
-##  3rd Qu.:  164.0   3rd Qu.:0.00000   
-##  Max.   :17315.0   Max.   :1.00000   
+##  1st Qu.:   40.0   1st Qu.:0.00000   
+##  Median :   77.0   Median :0.00000   
+##  Mean   :  167.5   Mean   :0.09848   
+##  3rd Qu.:  168.0   3rd Qu.:0.00000   
+##  Max.   :21174.0   Max.   :1.00000   
 ##  NA's   :46</code></pre>
 <pre class="r"><code>for(varname in tmp) cat(&quot;\n&quot;, varname, sd(pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC,varname]))</code></pre>
 <pre><code>## 
@@ -646,7 +648,7 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
 ##  gender 0.4861687
-##  bmi 7.230631
+##  bmi 7.230381
 ##  sofatotal 3.148155</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
@@ -656,44 +658,44 @@ summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU,tmp])</code></pre>
 ##  mortality_in_Hospt 0.2979723</code></pre>
 <pre class="r"><code>summary(pat_MIMIC_subset[,tmp])</code></pre>
 <pre><code>##       age        gender        bmi          sofatotal      unit_type   
-##  Min.   :16.00   F:3292   Min.   :15.04   Min.   : 0.000   CCU  :1106  
-##  1st Qu.:55.00   M:4917   1st Qu.:24.17   1st Qu.: 3.000   CSRU :2957  
-##  Median :67.00            Median :27.65   Median : 5.000   MICU :1845  
-##  Mean   :64.28            Mean   :29.11   Mean   : 5.608   NICU :   0  
-##  3rd Qu.:77.00            3rd Qu.:32.28   3rd Qu.: 8.000   SICU :1315  
-##  Max.   :89.00            Max.   :99.64   Max.   :21.000   TSICU: 986  
+##  Min.   :16.00   F:3449   Min.   :15.04   Min.   : 0.000   CCU  :1199  
+##  1st Qu.:55.00   M:5115   1st Qu.:24.17   1st Qu.: 3.000   CSRU :3074  
+##  Median :67.00            Median :27.62   Median : 5.000   MICU :1932  
+##  Mean   :64.33            Mean   :29.07   Mean   : 5.538   NICU :   0  
+##  3rd Qu.:77.00            3rd Qu.:32.26   3rd Qu.: 8.000   SICU :1349  
+##  Max.   :89.00            Max.   :99.64   Max.   :21.000   TSICU:1010  
 ##       nOxy         mortality_in_Hospt
-##  Min.   :   31.0   Min.   :0.0000    
-##  1st Qu.:  105.0   1st Qu.:0.0000    
-##  Median :  172.0   Median :0.0000    
-##  Mean   :  293.3   Mean   :0.1476    
-##  3rd Qu.:  328.0   3rd Qu.:0.0000    
-##  Max.   :17315.0   Max.   :1.0000</code></pre>
+##  Min.   :   27.0   Min.   :0.000     
+##  1st Qu.:  104.0   1st Qu.:0.000     
+##  Median :  171.0   Median :0.000     
+##  Mean   :  295.5   Mean   :0.146     
+##  3rd Qu.:  329.0   3rd Qu.:0.000     
+##  Max.   :21174.0   Max.   :1.000</code></pre>
 <pre class="r"><code>for(varname in tmp) cat(&quot;\n&quot;, varname, sd(pat_MIMIC_subset[,varname]))</code></pre>
 <pre><code>## 
-##  age 15.81533</code></pre>
+##  age 15.79191</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
-##  gender 0.4901356
-##  bmi 7.767395
-##  sofatotal 3.372926</code></pre>
+##  gender 0.4904764
+##  bmi 7.741905
+##  sofatotal 3.35881</code></pre>
 <pre><code>## Warning in var(if (is.vector(x) || is.factor(x)) x else as.double(x), na.rm = na.rm): Calling var(x) on a factor x is deprecated and will become an error.
 ##   Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.</code></pre>
 <pre><code>## 
-##  unit_type 1.618214
-##  nOxy 432.1812
-##  mortality_in_Hospt 0.3547672</code></pre>
+##  unit_type 1.61551
+##  nOxy 472.4187
+##  mortality_in_Hospt 0.3530866</code></pre>
 <pre class="r"><code>summary(pat_MIMIC_subset$median)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##   83.00   96.00   98.00   97.45   99.00  100.00</code></pre>
+##   83.00   96.00   98.00   97.44   99.00  100.00</code></pre>
 <pre class="r"><code>sd(pat_MIMIC_subset$median)</code></pre>
-<pre><code>## [1] 1.689414</code></pre>
+<pre><code>## [1] 1.684857</code></pre>
 <pre class="r"><code>summary(pat_MIMIC_subset$prop)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##  0.0000  0.4110  0.5588  0.5335  0.6770  0.9798</code></pre>
+##  0.0000  0.4140  0.5616  0.5363  0.6786  0.9798</code></pre>
 <pre class="r"><code>sd(pat_MIMIC_subset$prop)</code></pre>
-<pre><code>## [1] 0.1875104</code></pre>
+<pre><code>## [1] 0.1867663</code></pre>
 </div>
 </div>
 <div id="model-fitting" class="section level1">
@@ -754,7 +756,12 @@ gam_plotMed &lt;- function(
 print(paste(&quot;Number of cases:&quot;, summary(gamfitMed)$n))
 
 xlab &lt;- expression(&quot;Median oxygen saturation (SpO&quot;[2]*&quot;)&quot;)
-ylab &lt;- &quot;Probability of hospital mortality&quot; 
+
+if(colnames(gamfitMed$model)[1] == &quot;mortality_in_Hospt&quot;) {
+    ylab &lt;- &quot;Probability of hospital mortality&quot;
+  } else {
+    ylab &lt;- &quot;Probability of ICU mortality&quot;
+  }
 
 xName &lt;- colnames(gamfitMed$model)[grep(&quot;med&quot;, colnames(gamfitMed$model))]
 
@@ -785,6 +792,11 @@ if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
                         &quot;apsiii&quot; %in% colnames(gamfitMed$model),
                         &quot;apsiii = median(gamfitMed$model$apsiii),&quot;,
                         &quot;sofatotal = median(gamfitMed$model$sofatotal),&quot;
+                      ),
+                      ifelse(
+                        &quot;vent_duration&quot; %in% colnames(gamfitMed$model),
+                        &quot;vent_duration = median(gamfitMed$model$vent_duration),&quot;,
+                        &quot;&quot;
                       ),
                       &quot;hospital_id = 264), type = 'link', se.fit = T)&quot;), collapse = &quot;&quot;)))
 
@@ -837,7 +849,11 @@ gam_plotProp &lt;- function(
     xlab &lt;- expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements within 94% to 98%&quot;)
   }
   
-  ylab &lt;- &quot;Probability of hospital mortality&quot; 
+  if(colnames(gamfitProp$model)[1] == &quot;mortality_in_Hospt&quot;) {
+    ylab &lt;- &quot;Probability of hospital mortality&quot;
+  } else {
+    ylab &lt;- &quot;Probability of ICU mortality&quot;
+  }
   
   if(!add) {
     plot(1, type = 'n', xlim = xRange, ylim = yRange,
@@ -865,6 +881,11 @@ gam_plotProp &lt;- function(
                         &quot;apsiii&quot; %in% colnames(gamfitProp$model),
                         &quot;apsiii = median(gamfitProp$model$apsiii),&quot;,
                         &quot;sofatotal = median(gamfitProp$model$sofatotal),&quot;
+                      ),
+                      ifelse(
+                        &quot;vent_duration&quot; %in% colnames(gamfitProp$model),
+                        &quot;vent_duration = median(gamfitProp$model$vent_duration),&quot;,
+                        &quot;&quot;
                       ),
                       &quot;hospital_id = 264), type = 'link', se.fit = T)&quot;), collapse = &quot;&quot;)))
     
@@ -896,7 +917,7 @@ gam_plotProp &lt;- function(
 <div id="median-of-measurements" class="section level2">
 <h2>Median of measurements</h2>
 <p>We fit a generalized additive model (GAM) to check for the effect of the median oxygen saturation. GAMs are regression models that allow for nonlinear effects of the predictors. We add gender and age as predictors to control for them. We also control for hospital but since there are so many hospitals, we add it as a random effect.</p>
-<pre class="r"><code>gamfitMed_eICU &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre class="r"><code>gamfitMed_eICU &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
@@ -904,16 +925,72 @@ gam_plotProp &lt;- function(
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
 <pre><code>## iteration 5</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>gamfitMed_MIMIC &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_v4.pdf&quot;, width = plot_width,
     height = 3, pointsize = point_size, family = font)
 
 par(mfcol = c(1,2), cex = 1)
 
-gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
+summary(gamfitMed_eICU)</code></pre>
+<pre><code>## 
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_Hospt ~ s(median) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##              Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) -2.077949   0.041641 -49.902   &lt;2e-16 ***
+## genderM      0.002435   0.037706   0.065    0.949    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df       F  p-value    
+## s(median)        4.317  4.317   51.44  &lt; 2e-16 ***
+## s(age)           2.088  2.088  110.18  &lt; 2e-16 ***
+## s(bmi)           4.728  4.728   17.02 1.18e-15 ***
+## s(sofatotal)     1.000  1.000 1415.42  &lt; 2e-16 ***
+## s(vent_duration) 3.740  3.740    9.44 2.70e-07 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0952   
+##   Scale est. = 1         n = 26723</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26723&quot;</code></pre>
+<pre class="r"><code>summary(gamfitMed_MIMIC)</code></pre>
+<pre><code>## 
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_Hospt ~ s(median) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##             Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept) -1.92353    0.05438 -35.369   &lt;2e-16 ***
+## genderM     -0.10487    0.06666  -1.573    0.116    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df Chi.sq p-value    
+## s(median)        3.651  4.525 134.34 &lt; 2e-16 ***
+## s(age)           2.345  2.942  80.89 &lt; 2e-16 ***
+## s(bmi)           7.259  8.262  45.37 4.3e-07 ***
+## s(sofatotal)     4.078  5.036 257.66 &lt; 2e-16 ***
+## s(vent_duration) 8.709  8.931 134.86 &lt; 2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0905   Deviance explained = 10.1%
+## UBRE = -0.24632  Scale est. = 1         n = 8564</code></pre>
 <pre class="r"><code>gam_plotMed(gamfitMed_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
@@ -921,31 +998,34 @@ gam_plotMed(gamfitMed_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)<
 <div id="proportion-of-measurements-within-range" class="section level2">
 <h2>Proportion of measurements within range</h2>
 <p>We now fit a GAM with the proportion of measurements within a range instead of the median of the measurements.</p>
-<pre class="r"><code>gamfitProp_eICU &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre class="r"><code>gammfitProp_eICU &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_below_eICU &lt;- gamm(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre class="r"><code>gamfitProp_eICU &lt;- gammfitProp_eICU$gam
+
+gamfitProp_below_eICU &lt;- gamm(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
-<pre class="r"><code>gamfitProp_above_eICU &lt;- gamm(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre class="r"><code>gamfitProp_above_eICU &lt;- gamm(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)
 
-gamfitProp_below_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
+gamfitProp_below_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propBelow)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)
 
-gamfitProp_above_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_v2.pdf&quot;, width = plot_width,
+gamfitProp_above_MIMIC &lt;- gam(mortality_in_Hospt ~ s(propAbove)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_v4.pdf&quot;, width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfcol = c(2,2), cex = 1)
 
@@ -955,28 +1035,30 @@ summary(gamfitProp_eICU)</code></pre>
 ## Link function: logit 
 ## 
 ## Formula:
-## mortality_in_Hospt ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal)
+## mortality_in_Hospt ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) -1.68792    0.04298 -39.273   &lt;2e-16 ***
-## genderM      0.01815    0.04236   0.428    0.668    
+## (Intercept) -2.10766    0.04026 -52.351   &lt;2e-16 ***
+## genderM      0.03305    0.03774   0.876    0.381    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df       F  p-value    
-## s(prop)      3.710  3.710  66.089  &lt; 2e-16 ***
-## s(age)       2.153  2.153 114.420  &lt; 2e-16 ***
-## s(bmi)       4.273  4.273   9.944 2.33e-08 ***
-## s(sofatotal) 3.628  3.628 210.132  &lt; 2e-16 ***
+##                    edf Ref.df        F  p-value    
+## s(prop)          3.497  3.497   99.136  &lt; 2e-16 ***
+## s(age)           1.498  1.498  159.082  &lt; 2e-16 ***
+## s(bmi)           4.714  4.714   10.701 1.23e-09 ***
+## s(sofatotal)     1.000  1.000 1263.496  &lt; 2e-16 ***
+## s(vent_duration) 3.783  3.783    7.635 5.15e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0884   
-##   Scale est. = 1         n = 17241</code></pre>
+## R-sq.(adj) =  0.098   
+##   Scale est. = 1         n = 26723</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26723&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_below_eICU)</code></pre>
 <pre><code>## 
 ## Family: binomial 
@@ -984,28 +1066,29 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Formula:
 ## mortality_in_Hospt ~ s(propBelow) + gender + s(age) + s(bmi) + 
-##     s(sofatotal)
+##     s(sofatotal) + s(vent_duration)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) -1.67744    0.04868 -34.460   &lt;2e-16 ***
-## genderM     -0.04029    0.04231  -0.952    0.341    
+## (Intercept) -2.08116    0.04493 -46.319   &lt;2e-16 ***
+## genderM     -0.02462    0.03767  -0.654    0.513    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df      F p-value    
-## s(propBelow) 1.734  1.734 118.94  &lt;2e-16 ***
-## s(age)       2.642  2.642  77.46  &lt;2e-16 ***
-## s(bmi)       4.210  4.210  20.93  &lt;2e-16 ***
-## s(sofatotal) 3.631  3.631 246.51  &lt;2e-16 ***
+##                    edf Ref.df        F  p-value    
+## s(propBelow)     2.046  2.046  116.161  &lt; 2e-16 ***
+## s(age)           2.466  2.466   84.151  &lt; 2e-16 ***
+## s(bmi)           4.687  4.687   22.661  &lt; 2e-16 ***
+## s(sofatotal)     1.000  1.000 1549.178  &lt; 2e-16 ***
+## s(vent_duration) 3.003  3.003    8.795 7.61e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0861   
-##   Scale est. = 1         n = 17241</code></pre>
+## R-sq.(adj) =  0.0947   
+##   Scale est. = 1         n = 26723</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_below_eICU, main = &quot;&quot;, label = &quot;C&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26723&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_above_eICU)</code></pre>
 <pre><code>## 
 ## Family: binomial 
@@ -1013,56 +1096,59 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Formula:
 ## mortality_in_Hospt ~ s(propAbove) + gender + s(age) + s(bmi) + 
-##     s(sofatotal)
+##     s(sofatotal) + s(vent_duration)
 ## 
 ## Parametric coefficients:
-##              Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) -1.650962   0.042967  -38.42   &lt;2e-16 ***
-## genderM     -0.001262   0.042108   -0.03    0.976    
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) -2.05673    0.03977 -51.717   &lt;2e-16 ***
+## genderM      0.01454    0.03753   0.387    0.698    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df      F  p-value    
-## s(propAbove) 1.000  1.000  16.68 4.44e-05 ***
-## s(age)       2.330  2.330  96.69  &lt; 2e-16 ***
-## s(bmi)       4.447  4.447  14.97 4.84e-13 ***
-## s(sofatotal) 3.594  3.594 229.18  &lt; 2e-16 ***
+##                    edf Ref.df        F  p-value    
+## s(propAbove)     1.000  1.000   34.271 4.85e-09 ***
+## s(age)           1.931  1.931  113.734  &lt; 2e-16 ***
+## s(bmi)           4.886  4.886   16.119 2.13e-15 ***
+## s(sofatotal)     1.000  1.000 1392.524  &lt; 2e-16 ***
+## s(vent_duration) 3.458  3.458    8.051 6.39e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0759   
-##   Scale est. = 1         n = 17241</code></pre>
+## R-sq.(adj) =  0.0862   
+##   Scale est. = 1         n = 26723</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_above_eICU, main = &quot;&quot;, col = &quot;blue&quot;, add = TRUE)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 17241&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26723&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_MIMIC)</code></pre>
 <pre><code>## 
 ## Family: binomial 
 ## Link function: logit 
 ## 
 ## Formula:
-## mortality_in_Hospt ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal)
+## mortality_in_Hospt ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
-## (Intercept) -1.85775    0.05245 -35.419   &lt;2e-16 ***
-## genderM     -0.08139    0.06708  -1.213    0.225    
+## (Intercept) -1.95144    0.05489 -35.553   &lt;2e-16 ***
+## genderM     -0.05468    0.06652  -0.822    0.411    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df Chi.sq p-value    
-## s(prop)      6.792  7.910 100.31  &lt;2e-16 ***
-## s(age)       2.269  2.848  80.05  &lt;2e-16 ***
-## s(bmi)       6.961  8.033  24.15  0.0022 ** 
-## s(sofatotal) 4.183  5.155 339.65  &lt;2e-16 ***
+##                    edf Ref.df Chi.sq  p-value    
+## s(prop)          7.107  8.167 105.44  &lt; 2e-16 ***
+## s(age)           2.208  2.773  85.24  &lt; 2e-16 ***
+## s(bmi)           6.950  8.022  26.34 0.000929 ***
+## s(sofatotal)     4.306  5.295 270.21  &lt; 2e-16 ***
+## s(vent_duration) 8.707  8.929 120.23  &lt; 2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0726   Deviance explained = 7.95%
-## UBRE = -0.22393  Scale est. = 1         n = 8209</code></pre>
+## R-sq.(adj) =  0.0788   Deviance explained = 9.61%
+## UBRE = -0.24128  Scale est. = 1         n = 8564</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_below_MIMIC)</code></pre>
 <pre><code>## 
 ## Family: binomial 
@@ -1070,28 +1156,29 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Formula:
 ## mortality_in_Hospt ~ s(propBelow) + gender + s(age) + s(bmi) + 
-##     s(sofatotal)
+##     s(sofatotal) + s(vent_duration)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
-## (Intercept)  -1.8388     0.0526 -34.959   &lt;2e-16 ***
-## genderM      -0.1639     0.0675  -2.429   0.0152 *  
+## (Intercept) -1.92422    0.05314 -36.210   &lt;2e-16 ***
+## genderM     -0.14363    0.06699  -2.144    0.032 *  
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df Chi.sq  p-value    
-## s(propBelow) 2.121  2.671 224.57  &lt; 2e-16 ***
-## s(age)       2.448  3.068  69.38 8.56e-15 ***
-## s(bmi)       7.199  8.218  48.14 1.24e-07 ***
-## s(sofatotal) 4.044  4.996 323.26  &lt; 2e-16 ***
+##                    edf Ref.df Chi.sq  p-value    
+## s(propBelow)     5.076  6.196 258.73  &lt; 2e-16 ***
+## s(age)           2.452  3.075  79.19  &lt; 2e-16 ***
+## s(bmi)           7.306  8.293  52.99 1.62e-08 ***
+## s(sofatotal)     3.980  4.923 248.07  &lt; 2e-16 ***
+## s(vent_duration) 6.945  8.051 128.55  &lt; 2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0945   Deviance explained = 9.59%
-## UBRE = -0.23878  Scale est. = 1         n = 8209</code></pre>
+## R-sq.(adj) =  0.108   Deviance explained = 11.6%
+## UBRE = -0.25835  Scale est. = 1         n = 8564</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_below_MIMIC, main = &quot;&quot;, label = &quot;D&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>summary(gamfitProp_above_MIMIC)</code></pre>
 <pre><code>## 
 ## Family: binomial 
@@ -1099,28 +1186,29 @@ summary(gamfitProp_eICU)</code></pre>
 ## 
 ## Formula:
 ## mortality_in_Hospt ~ s(propAbove) + gender + s(age) + s(bmi) + 
-##     s(sofatotal)
+##     s(sofatotal) + s(vent_duration)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(&gt;|z|)    
-## (Intercept) -1.81959    0.05189 -35.067   &lt;2e-16 ***
-## genderM     -0.12380    0.06685  -1.852    0.064 .  
+## (Intercept) -1.91156    0.05417 -35.288   &lt;2e-16 ***
+## genderM     -0.10533    0.06631  -1.589    0.112    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                edf Ref.df Chi.sq  p-value    
-## s(propAbove) 6.848  7.950  65.76 4.18e-11 ***
-## s(age)       2.344  2.941  73.21 1.28e-15 ***
-## s(bmi)       6.969  8.039  37.40 1.00e-05 ***
-## s(sofatotal) 4.103  5.064 346.37  &lt; 2e-16 ***
+##                    edf Ref.df Chi.sq  p-value    
+## s(propAbove)     7.069  8.129  75.79 4.13e-13 ***
+## s(age)           2.332  2.926  79.09  &lt; 2e-16 ***
+## s(bmi)           7.027  8.082  43.00 9.60e-07 ***
+## s(sofatotal)     4.248  5.230 271.99  &lt; 2e-16 ***
+## s(vent_duration) 8.713  8.933 124.98  &lt; 2e-16 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0679   Deviance explained = 7.41%
-## UBRE = -0.21944  Scale est. = 1         n = 8209</code></pre>
+## R-sq.(adj) =  0.0775   Deviance explained = 9.19%
+## UBRE = -0.23777  Scale est. = 1         n = 8564</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_above_MIMIC, main = &quot;&quot;, col = &quot;blue&quot;, add = TRUE)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
@@ -1133,11 +1221,6 @@ summary(gamfitProp_eICU)</code></pre>
   library(oddsratio)
 }</code></pre>
 <pre><code>## Loading required package: oddsratio</code></pre>
-<pre><code>## Warning in library(package, lib.loc = lib.loc, character.only = TRUE,
-## logical.return = TRUE, : there is no package called 'oddsratio'</code></pre>
-<pre><code>## Installing package into '/usr/local/lib/R/site-library'
-## (as 'lib' is unspecified)</code></pre>
-<pre><code>## also installing the dependency 'cowplot'</code></pre>
 <pre class="r"><code>computeCI &lt;- function(gam_fit, data) {
   
   if(&quot;median&quot; %in% colnames(gam_fit$model)) {
@@ -1170,10 +1253,10 @@ summary(gamfitProp_eICU)</code></pre>
   
   } else {
     xName &lt;- colnames(gam_fit$model)[grep(&quot;prop&quot;, colnames(gam_fit$model))]
-    tmp &lt;- or_gam(data = data, model = gam_fit, pred = xName, values = c(.8, .4))
+    tmp &lt;- or_gam(data = data, model = gam_fit, pred = xName, values = c(.4, .8))
 
   cat(
-  &quot;The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is &quot;,
+  &quot;The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is &quot;,
   tmp$oddsratio,
   &quot; (95% CI &quot;,
   tmp$`CI_low (2.5%)`,
@@ -1187,290 +1270,206 @@ summary(gamfitProp_eICU)</code></pre>
 
 }</code></pre>
 <pre class="r"><code>computeCI(gamfitMed_eICU, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.47371 (95% CI 1.443298 to 1.504764).
-## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 3.121515 (95% CI 2.850807 to 3.417929).</code></pre>
+<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.571333 (95% CI 1.536434 to 1.607025).
+## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 3.184371 (95% CI 2.935065 to 3.454853).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_eICU, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 2.289294 (95% CI 2.212923 to 2.3683).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 0.4150372 (95% CI 0.4258726 to 0.4044774).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_above_eICU, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8753307 (95% CI 0.8548648 to 0.8962865).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 1.187243 (95% CI 1.216197 to 1.158977).</code></pre>
 <pre class="r"><code>computeCI(gamfitMed_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.081123 (95% CI 1.019635 to 1.146319).
-## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 5.301886 (95% CI 4.396393 to 6.393878).</code></pre>
+<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.205804 (95% CI 1.143545 to 1.271452).
+## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 5.77162 (95% CI 4.800974 to 6.938509).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 1.996019 (95% CI 1.891065 to 2.106797).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 0.5261439 (95% CI 0.5497133 to 0.503585).</code></pre>
 <pre class="r"><code>computeCI(gamfitProp_above_MIMIC, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.7940187 (95% CI 0.7356068 to 0.8570689).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 1.28242 (95% CI 1.381329 to 1.190593).</code></pre>
 <p>Same as above but now without adjusting for covariates</p>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(median), data = pat_eICU_subset, family = binomial)
 computeCI(tmp, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.714456 (95% CI 1.679712 to 1.749919).
-## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 2.504868 (95% CI 2.245808 to 2.793812).</code></pre>
+<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 2.038953 (95% CI 1.996559 to 2.082247).
+## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 2.5423 (95% CI 2.306899 to 2.801722).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(prop), data = pat_eICU_subset, family = binomial)
 computeCI(tmp, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 2.506699 (95% CI 2.380267 to 2.639847).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 0.3299139 (95% CI 0.3438257 to 0.3165649).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(propAbove), data = pat_eICU_subset, family = binomial)
 computeCI(tmp, data = pat_eICU_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.779816 (95% CI 0.7550976 to 0.8053436).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 1.390475 (95% CI 1.420866 to 1.360734).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(median), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.124548 (95% CI 1.077899 to 1.173216).
-## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 7.036674 (95% CI 4.92764 to 10.04838).</code></pre>
+<pre><code>## The odds ratio of mortality for a median oxygen saturation at 100% versus 96% is 1.255124 (95% CI 1.191095 to 1.322596).
+## The odds ratio of mortality for a median oxygen saturation at 92% versus 96% is 4.7955 (95% CI 3.857529 to 5.961543).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(prop), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 1.977825 (95% CI 1.839609 to 2.126427).</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 0.5124882 (95% CI 0.5481915 to 0.4791102).</code></pre>
 <pre class="r"><code>tmp &lt;- gam(mortality_in_Hospt ~ s(propAbove), data = pat_MIMIC_subset, family = binomial)
 computeCI(tmp, data = pat_MIMIC_subset)</code></pre>
-<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 40% versus 80% is 0.8039281 (95% CI 0.7441187 to 0.8685448).</code></pre>
-<p>We also compute the estimted mortality after categorizing <code>prop</code> into 3 groups.</p>
-<pre class="r"><code>pat_eICU_subset$prop_cat &lt;- as.factor((pat_eICU_subset$prop &gt;= .4) + (pat_eICU_subset$prop &gt;= .8))
-levels(pat_eICU_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
-
-
-tab3 &lt;- gamm(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
-<pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre class="r"><code>tmp &lt;- predict(tab3, newdata = data.frame(
-  prop_cat = levels(pat_eICU_subset$prop_cat),
-  gender = 'F',
-  age = median(tab3$model$age),
-  bmi = median(tab3$model$bmi),
-  sofatotal = median(tab3$model$sofatotal)
-), type = 'link', se.fit= TRUE)
-logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
-<pre><code>##          1          2          3 
-## 0.16936345 0.10741246 0.06560368</code></pre>
-<pre class="r"><code>logistic(tmp$fit)</code></pre>
-<pre><code>##          1          2          3 
-## 0.18833103 0.11963694 0.08253824</code></pre>
-<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
-<pre><code>##         1         2         3 
-## 0.2088886 0.1330453 0.1033606</code></pre>
-<pre class="r"><code># Same for MIMIC
-
-pat_MIMIC_subset$prop_cat &lt;- as.factor((pat_MIMIC_subset$prop &gt;= .4) + (pat_MIMIC_subset$prop &gt;= .8))
-levels(pat_MIMIC_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
-
-
-tab3 &lt;- gam(mortality_in_Hospt ~ prop_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
-tmp &lt;- predict(tab3, newdata = data.frame(
-  prop_cat = levels(pat_MIMIC_subset$prop_cat),
-  gender = 'F',
-  age = median(tab3$model$age),
-  bmi = median(tab3$model$bmi),
-  sofatotal = median(tab3$model$sofatotal)
-), type = 'link', se.fit= TRUE)
-logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
-<pre><code>##          1          2          3 
-## 0.12958986 0.07757577 0.05058002</code></pre>
-<pre class="r"><code>logistic(tmp$fit)</code></pre>
-<pre><code>##          1          2          3 
-## 0.15377632 0.09153534 0.07221279</code></pre>
-<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
-<pre><code>##         1         2         3 
-## 0.1815354 0.1077136 0.1021028</code></pre>
-<pre class="r"><code>pat_MIMIC_subset$prop_cat &lt;- as.factor((pat_MIMIC_subset$prop &gt;= .4) + (pat_MIMIC_subset$prop &gt;= .8))
-levels(pat_MIMIC_subset$prop_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
-
-
-# Now with propAbove
-
-pat_MIMIC_subset$propAbove_cat &lt;- as.factor((pat_MIMIC_subset$propAbove &gt;= .4) + (pat_MIMIC_subset$propAbove &gt;= .8))
-levels(pat_MIMIC_subset$propAbove_cat) &lt;- c(&quot;&lt;.4&quot;, &quot;[.4, .8)&quot;, &quot;&gt;= .8&quot;)
-
-tab3 &lt;- gam(mortality_in_Hospt ~ propAbove_cat+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset, family = binomial)
-tmp &lt;- predict(tab3, newdata = data.frame(
-  propAbove_cat = levels(pat_MIMIC_subset$propAbove_cat),
-  gender = 'F',
-  age = median(tab3$model$age),
-  bmi = median(tab3$model$bmi),
-  sofatotal = median(tab3$model$sofatotal)
-), type = 'link', se.fit= TRUE)
-logistic(tmp$fit - 2*tmp$se.fit)</code></pre>
-<pre><code>##          1          2          3 
-## 0.08826377 0.08894030 0.08336035</code></pre>
-<pre class="r"><code>logistic(tmp$fit)</code></pre>
-<pre><code>##         1         2         3 
-## 0.1040842 0.1058075 0.1133983</code></pre>
-<pre class="r"><code>logistic(tmp$fit + 2*tmp$se.fit)</code></pre>
-<pre><code>##         1         2         3 
-## 0.1223597 0.1254330 0.1524597</code></pre>
+<pre><code>## The odds ratio of mortality for a proportion of measurements within the range at 80% versus 40% is 1.246826 (95% CI 1.348315 to 1.152976).</code></pre>
 </div>
 <div id="supplement" class="section level2">
 <h2>Supplement</h2>
 <p>Let us now create additional plots for the supplement.</p>
-<div id="sensitivity-analysis" class="section level3">
-<h3>Sensitivity analysis</h3>
-<p>APACHE score instead of SOFA score as control.</p>
-<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<div id="icu-mortality-instead-of-hospital-mortality" class="section level3">
+<h3>ICU mortality instead of hospital mortality</h3>
+<pre class="r"><code>gamfitMed_ICU_eICU &lt;- gamm(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)
+<pre class="r"><code>gamfitMed_ICU_MIMIC &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)
 
+pdf(file = &quot;Figures/med_ICU_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
 
-gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+par(mfcol = c(1,2), cex = 1)
+
+summary(gamfitMed_ICU_eICU)</code></pre>
 <pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii), data = pat_MIMIC_subset, family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_APACHE_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16059&quot;</code></pre>
-<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_APACHE_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16059&quot;</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8209&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<p>Only considering the first 24, 48, or 72 hours of a ventilation session when it comes to SpO2.</p>
-<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_ICU ~ s(median) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##              Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) -2.748732   0.061282 -44.854   &lt;2e-16 ***
+## genderM      0.005746   0.047158   0.122    0.903    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df        F  p-value    
+## s(median)        4.695  4.695   39.527  &lt; 2e-16 ***
+## s(age)           1.000  1.000   27.221 1.83e-07 ***
+## s(bmi)           4.051  4.051   10.028 3.63e-08 ***
+## s(sofatotal)     1.000  1.000 1205.435  &lt; 2e-16 ***
+## s(vent_duration) 1.000  1.000    2.966   0.0851 .  
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0753   
+##   Scale est. = 1         n = 26721</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_ICU_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26721&quot;</code></pre>
+<pre class="r"><code>summary(gamfitMed_ICU_MIMIC)</code></pre>
 <pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre><code>## iteration 4</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)
-
-
-gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
-<pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_24_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16429&quot;</code></pre>
-<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8184&quot;</code></pre>
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_ICU ~ s(median) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##             Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept) -2.16703    0.05765  -37.59   &lt;2e-16 ***
+## genderM     -0.11248    0.07256   -1.55    0.121    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df Chi.sq  p-value    
+## s(median)        3.697  4.586 143.87  &lt; 2e-16 ***
+## s(age)           2.521  3.155  57.03 5.27e-12 ***
+## s(bmi)           7.507  8.436  30.74  0.00021 ***
+## s(sofatotal)     4.367  5.368 258.92  &lt; 2e-16 ***
+## s(vent_duration) 6.243  7.433 110.25  &lt; 2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0882   Deviance explained = 10.5%
+## UBRE = -0.34174  Scale est. = 1         n = 8564</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_ICU_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_24_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16429&quot;</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8184&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
-<pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre><code>## iteration 4</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)
-
-
-gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
-<pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_48_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16380&quot;</code></pre>
-<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8198&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_48_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16380&quot;</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8198&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre class="r"><code>gammfitProp_ICU_eICU &lt;- gamm(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
-<pre><code>## iteration 5</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_ICU ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)
+<pre class="r"><code>gamfitProp_ICU_eICU &lt;- gammfitProp_ICU_eICU$gam
 
+gamfitProp_ICU_MIMIC &lt;- gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)
 
-gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+pdf(file = &quot;Figures/prop_ICU_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+summary(gamfitProp_ICU_eICU)</code></pre>
 <pre><code>## 
-##  Maximum number of PQL iterations:  20</code></pre>
-<pre><code>## iteration 1</code></pre>
-<pre><code>## iteration 2</code></pre>
-<pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_72_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16153&quot;</code></pre>
-<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8200&quot;</code></pre>
-<pre class="r"><code>dev.off()</code></pre>
-<pre><code>## png 
-##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_72_v2.pdf&quot;, width = plot_width,
-    height = 3, pointsize = point_size, family = font)
-par(mfcol = c(1,2), cex = 1)
-
-gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 16153&quot;</code></pre>
-<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8200&quot;</code></pre>
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_ICU ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) -2.78867    0.06043 -46.146   &lt;2e-16 ***
+## genderM      0.04285    0.04715   0.909    0.363    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df        F  p-value    
+## s(prop)          3.292  3.292   71.328  &lt; 2e-16 ***
+## s(age)           1.000  1.000   36.742 1.37e-09 ***
+## s(bmi)           4.023  4.023    6.359 3.95e-05 ***
+## s(sofatotal)     1.000  1.000 1066.235  &lt; 2e-16 ***
+## s(vent_duration) 1.000  1.000    1.031     0.31    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0735   
+##   Scale est. = 1         n = 26721</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_ICU_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 26721&quot;</code></pre>
+<pre class="r"><code>summary(gamfitProp_ICU_MIMIC)</code></pre>
+<pre><code>## 
+## Family: binomial 
+## Link function: logit 
+## 
+## Formula:
+## mortality_in_ICU ~ s(prop) + gender + s(age) + s(bmi) + s(sofatotal) + 
+##     s(vent_duration)
+## 
+## Parametric coefficients:
+##             Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept) -2.18606    0.05774 -37.859   &lt;2e-16 ***
+## genderM     -0.06070    0.07220  -0.841      0.4    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##                    edf Ref.df Chi.sq  p-value    
+## s(prop)          1.000  1.000  82.78  &lt; 2e-16 ***
+## s(age)           2.420  3.030  59.84 7.43e-13 ***
+## s(bmi)           7.292  8.285  16.33   0.0415 *  
+## s(sofatotal)     4.853  5.902 273.47  &lt; 2e-16 ***
+## s(vent_duration) 6.397  7.574  90.93 3.78e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.0696   Deviance explained = 9.46%
+## UBRE = -0.33494  Scale est. = 1         n = 8564</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_ICU_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
 </div>
-<div id="subgroup-analysis" class="section level3">
-<h3>Subgroup analysis</h3>
-<p>Split by ventilation type</p>
-<pre class="r"><code>gamfitMed_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<div id="sensitivity-analysis" class="section level3">
+<h3>Sensitivity analysis</h3>
+<p>APACHE score instead of SOFA score as control.</p>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(apsiii)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
@@ -1479,7 +1478,10 @@ gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&q
 <pre><code>## iteration 4</code></pre>
 <pre><code>## iteration 5</code></pre>
 <pre><code>## iteration 6</code></pre>
-<pre class="r"><code>gamfitMed_eICU_tmp_2 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(apsiii)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii)+s(vent_duration), data = pat_eICU_subset, family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
@@ -1487,26 +1489,219 @@ gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&q
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
 <pre><code>## iteration 5</code></pre>
-<pre class="r"><code>gamfitMed_MIMIC_tmp_1 &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
-gamfitMed_MIMIC_tmp_2 &lt;- gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)
+<pre><code>## iteration 6</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(apsiii)+s(vent_duration), data = pat_MIMIC_subset, family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_APACHE_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
 
+par(mfcol = c(1,2), cex = 1)
 
-gamfitProp_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 24885&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_APACHE_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 24885&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8564&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Only considering those with ventilation session of less than 48 hours.</p>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU[pat_eICU$icustay_id %in% IDs_eICU &amp; pat_eICU$supp_oxygen &amp; pat_eICU$vent_duration &lt; 48,], family = binomial)
+
+gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC &amp; pat_MIMIC$supp_oxygen &amp; pat_MIMIC$vent_duration &lt; 48,], family = binomial)
+
+gamfitProp_eICU_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU[pat_eICU$icustay_id %in% IDs_eICU &amp; pat_eICU$supp_oxygen &amp; pat_eICU$vent_duration &lt; 48,], family = binomial)
+
+gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC &amp; pat_MIMIC$supp_oxygen &amp; pat_MIMIC$vent_duration &lt; 48,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_48_reviewer_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 36021&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4827&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_48_reviewer_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 36021&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4827&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Only considering the first 24, 48, or 72 hours of a ventilation session when it comes to SpO2.</p>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
-<pre class="r"><code>gamfitProp_eICU_tmp_2 &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(median_24)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_24 &gt;= 12,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_24)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_24 &gt;= 12,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_24_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 25505&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8533&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_24_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 25505&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8533&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
 <pre><code>## 
 ##  Maximum number of PQL iterations:  20</code></pre>
 <pre><code>## iteration 1</code></pre>
 <pre><code>## iteration 2</code></pre>
 <pre><code>## iteration 3</code></pre>
 <pre><code>## iteration 4</code></pre>
-<pre class="r"><code>gamfitProp_MIMIC_tmp_1 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
-gamfitProp_MIMIC_tmp_2 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/med_vent_type_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(median_48)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_48 &gt;= 24,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_48)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_48 &gt;= 24,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_48_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 25385&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8547&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_48_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 25385&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8547&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(median_72)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)
+
+
+gamfitProp_eICU_tmp &lt;- gamm(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$nOxy_72 &gt;= 36,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre class="r"><code>gamfitProp_MIMIC_tmp &lt;- gam(mortality_in_Hospt ~ s(prop_72)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$nOxy_72 &gt;= 36,], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_72_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotMed(gamfitMed_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 24885&quot;</code></pre>
+<pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8552&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/prop_72_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+par(mfcol = c(1,2), cex = 1)
+
+gam_plotProp(gamfitProp_eICU_tmp, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 24885&quot;</code></pre>
+<pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp, main = &quot;MIMIC&quot;, label = &quot;B&quot;)</code></pre>
+<pre><code>## [1] &quot;Number of cases: 8552&quot;</code></pre>
+<pre class="r"><code>dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+</div>
+<div id="subgroup-analysis" class="section level3">
+<h3>Subgroup analysis</h3>
+<p>Split by ventilation type</p>
+<pre class="r"><code>gamfitMed_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre><code>## iteration 5</code></pre>
+<pre><code>## iteration 6</code></pre>
+<pre class="r"><code>gamfitMed_eICU_tmp_2 &lt;- gamm(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre><code>## iteration 5</code></pre>
+<pre class="r"><code>gamfitMed_MIMIC_tmp_1 &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitMed_MIMIC_tmp_2 &lt;- gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)
+
+
+gamfitProp_eICU_tmp_1 &lt;- gamm(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type == 4,], family = binomial, random = list(hospital_id = ~ 1))$gam</code></pre>
+<pre><code>## 
+##  Maximum number of PQL iterations:  20</code></pre>
+<pre><code>## iteration 1</code></pre>
+<pre><code>## iteration 2</code></pre>
+<pre><code>## iteration 3</code></pre>
+<pre><code>## iteration 4</code></pre>
+<pre class="r"><code>gamfitProp_eICU_tmp_2 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)#, random = list(hospital_id = ~ 1), contol=list(sing.tol=.1, maxIter = 500, msMaxIter = 500, msMaxEval = 500, tolerance = 0.1, msTol = 0.1))$gam # gam instead of gamm because gamm yields singular convergence.
+
+gamfitProp_MIMIC_tmp_1 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type == 4,], family = binomial)
+gamfitProp_MIMIC_tmp_2 &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$oxygen_therapy_type %in% c(1,3),], family = binomial)</code></pre>
+<pre class="r"><code>pdf(file = &quot;Figures/med_vent_type_v4.pdf&quot;, width = plot_width,
     height = 6, pointsize = point_size, family = font)
 
 par(mfcol = c(2,2), cex = 1)
@@ -1514,28 +1709,28 @@ par(mfcol = c(2,2), cex = 1)
 vent_type_2 &lt;- &quot;Supplemental oxygen\nor non-invasive ventilation&quot;
 
 gam_plotMed(gamfitMed_eICU_tmp_1, main = &quot;eICU-CRD\nInvasive ventilation&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 12424&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 14148&quot;</code></pre>
 <pre class="r"><code>gam_plotMed(gamfitMed_eICU_tmp_2, main = vent_type_2, label = &quot;C&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1927&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3641&quot;</code></pre>
 <pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp_1, main = &quot;MIMIC\nInvasive ventilation&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 7666&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 7860&quot;</code></pre>
 <pre class="r"><code>gam_plotMed(gamfitMed_MIMIC_tmp_2, main = vent_type_2, label = &quot;D&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 538&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 697&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_vent_type_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/prop_vent_type_v4.pdf&quot;, width = plot_width,
     height = 6, pointsize = point_size, family = font)
 par(mfcol = c(2,2), cex = 1)
 
 gam_plotProp(gamfitProp_eICU_tmp_1, main = &quot;eICU-CRD\nInvasive ventilation&quot;, label = &quot;A&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 12424&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 14148&quot;</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_eICU_tmp_2, main = vent_type_2, label = &quot;C&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1927&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3641&quot;</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp_1, main = &quot;MIMIC\nInvasive ventilation&quot;, label = &quot;B&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 7666&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 7860&quot;</code></pre>
 <pre class="r"><code>gam_plotProp(gamfitProp_MIMIC_tmp_2, main = vent_type_2, label = &quot;D&quot;)</code></pre>
-<pre><code>## [1] &quot;Number of cases: 538&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 697&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
@@ -1550,55 +1745,55 @@ mat[5,] &lt;- c(&quot;Neuro ICU&quot;, &quot;TSICU&quot;, &quot;Neuro ICU&quot;,
 
 
 
-pdf(file = &quot;Figures/med_ICU_type_v2.pdf&quot;, width = plot_width,
+pdf(file = &quot;Figures/med_ICU_type_v4.pdf&quot;, width = plot_width,
     height = 12, pointsize = point_size, family = font)
 
 par(mfrow = c(5,2), cex = 1)
 
 for(i in 1:5) {
-gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
             main = mat[i,3], label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
 
-gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
             main = mat[i,4], label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
 
 }</code></pre>
-<pre><code>## [1] &quot;Number of cases: 4388&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2957&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1670&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1845&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1519&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1315&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8162&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1106&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1502&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 986&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 6963&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3074&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2613&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1932&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2202&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1349&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 12400&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1199&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2545&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1010&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_ICU_type_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/prop_ICU_type_v4.pdf&quot;, width = plot_width,
     height = 12, pointsize = point_size, family = font)
 
 par(mfrow = c(5,2), cex = 1)
 
 for(i in 1:5) {
-gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$unit_type == mat[i,1],], family = binomial),
             main = mat[i,3], label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
 
-gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$unit_type == mat[i,2],], family = binomial),
             main = mat[i,4], label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
 
 }</code></pre>
-<pre><code>## [1] &quot;Number of cases: 4388&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2957&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1670&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1845&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1519&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1315&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 8162&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1106&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1502&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 986&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 6963&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3074&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2613&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1932&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2202&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1349&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 12400&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1199&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2545&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1010&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
@@ -1613,57 +1808,59 @@ mat[4,] &lt;- c(&quot;Asian&quot;, &quot;Asian&quot;)
 
 
 
-pdf(file = &quot;Figures/med_ethnicity_v2.pdf&quot;, width = plot_width,
+pdf(file = &quot;Figures/med_ethnicity_v4.pdf&quot;, width = plot_width,
     height = 12, pointsize = point_size, family = font)
 
 par(mfrow = c(n_cat,2), cex = 1)
 
 for(i in 1:n_cat) {
-gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
             main = paste0(ifelse(i == 1, &quot;eICU-CRD\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
 
-gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
             main = paste0(ifelse(i == 1, &quot;MIMIC\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
 
 }</code></pre>
-<pre><code>## [1] &quot;Number of cases: 13464&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 5804&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2005&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 443&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 636&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 241&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 170&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 155&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 21123&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 6038&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3090&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 469&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 819&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 248&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 253&quot;</code></pre>
+<pre><code>## Warning in newton(lsp = lsp, X = G$X, y = G$y, Eb = G$Eb, UrS = G$UrS, L =
+## G$L, : Iteration limit reached without full convergence - check carefully</code></pre>
+<pre><code>## [1] &quot;Number of cases: 157&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
-<pre class="r"><code>pdf(file = &quot;Figures/prop_ethnicity_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/prop_ethnicity_v4.pdf&quot;, width = plot_width,
     height = 12, pointsize = point_size, family = font)
 
 par(mfrow = c(n_cat,2), cex = 1)
 
 for(i in 1:n_cat) {
-gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[pat_eICU_subset$eth == mat[i,1],], family = binomial),
             main = paste0(ifelse(i == 1, &quot;eICU-CRD\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;A&quot;, &quot;C&quot;, &quot;E&quot;, &quot;G&quot;, &quot;I&quot;)[i])
 
-gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[pat_MIMIC_subset$eth == mat[i,1],], family = binomial),
             main = paste0(ifelse(i == 1, &quot;MIMIC\n&quot;, &quot;&quot;), mat[i,2]), label = c(&quot;B&quot;, &quot;D&quot;, &quot;F&quot;, &quot;H&quot;, &quot;J&quot;)[i])
 
 }</code></pre>
-<pre><code>## [1] &quot;Number of cases: 13464&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 5804&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2005&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 443&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 636&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 241&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 170&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 155&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 21123&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 6038&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3090&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 469&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 819&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 248&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 253&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 157&quot;</code></pre>
 <pre class="r"><code>dev.off()</code></pre>
 <pre><code>## png 
 ##   2</code></pre>
 <p>Split up by whether certain diagnosis was present.</p>
 <pre class="r"><code># Matrix with order and variable/file names for diagnoses
-n_cat &lt;- 10
+n_cat &lt;- 11
 mat &lt;- matrix(NA_character_, nrow = n_cat, ncol = 2)
 mat[1,] &lt;- c(&quot;has_atrial_fibrillation_disease&quot;, &quot;AF&quot;)
 mat[2,] &lt;- c(&quot;has_cancer_disease&quot;, &quot;cancer&quot;)
@@ -1675,27 +1872,28 @@ mat[7,] &lt;- c(&quot;has_diabetes_mellitus_disease&quot;, &quot;diabetes&quot;)
 mat[8,] &lt;- c(&quot;has_hypertension_disease&quot;, &quot;hypertension&quot;)
 mat[9,] &lt;- c(&quot;has_sepsis&quot;, &quot;sepsis&quot;)
 mat[10,] &lt;- c(&quot;has_stroke_disease&quot;, &quot;stroke&quot;)
+mat[11,] &lt;- c(&quot;has_ischemic_heart_disease&quot;, &quot;ischemic heart disease&quot;)
 
 for(i in 1:n_cat) {
   print(i)
   print(mat[i,])
 
-pdf(file = paste0(&quot;Figures/&quot;, mat[i,2], &quot;_v2.pdf&quot;), width = plot_width,
+pdf(file = paste0(&quot;Figures/&quot;, mat[i,2], &quot;_v4.pdf&quot;), width = plot_width,
     height = 6, pointsize = point_size, family = font)
 
 par(mfrow = c(2,2), cex = 1)
 
-gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
             main = &quot;eICU-CRD&quot;, label = &quot;A&quot;, yRange = 0:1)
 
-gam_plotMed(gam(mortality_in_ICU ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+gam_plotMed(gam(mortality_in_Hospt ~ s(median)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
             main = &quot;MIMIC&quot;, label = &quot;B&quot;, yRange = 0:1)
 
 
-gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset[which(pat_eICU_subset[,mat[i,1]]),], family = binomial),
             main = &quot;&quot;, label = &quot;C&quot;, yRange = 0:1)
 
-gam_plotProp(gam(mortality_in_ICU ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
+gam_plotProp(gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_MIMIC_subset[which(pat_MIMIC_subset[,mat[i,1]]),], family = binomial),
             main = &quot;&quot;, label = &quot;D&quot;, yRange = 0:1)
 
 
@@ -1703,68 +1901,113 @@ dev.off()
 }</code></pre>
 <pre><code>## [1] 1
 ## [1] &quot;has_atrial_fibrillation_disease&quot; &quot;AF&quot;                             
-## [1] &quot;Number of cases: 3018&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 3668&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 3018&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 3668&quot;</code></pre>
+## [1] &quot;Number of cases: 4550&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3838&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4550&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3838&quot;</code></pre>
 <pre><code>## [1] 2
 ## [1] &quot;has_cancer_disease&quot; &quot;cancer&quot;            
-## [1] &quot;Number of cases: 852&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 940&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 852&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 940&quot;</code></pre>
+## [1] &quot;Number of cases: 1413&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 984&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1413&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 984&quot;</code></pre>
 <pre><code>## [1] 3
 ## [1] &quot;CHF&quot; &quot;CHF&quot;
-## [1] &quot;Number of cases: 1827&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2511&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1827&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2511&quot;</code></pre>
+## [1] &quot;Number of cases: 2795&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2633&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2795&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2633&quot;</code></pre>
 <pre><code>## [1] 4
 ## [1] &quot;CKD&quot; &quot;CKD&quot;
-## [1] &quot;Number of cases: 1366&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 843&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1366&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 843&quot;</code></pre>
+## [1] &quot;Number of cases: 2115&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 881&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2115&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 881&quot;</code></pre>
 <pre><code>## [1] 5
 ## [1] &quot;has_chronic_liver_disease&quot; &quot;CLD&quot;                      
-## [1] &quot;Number of cases: 198&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 515&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 198&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 515&quot;</code></pre>
+## [1] &quot;Number of cases: 284&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 532&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 284&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 532&quot;</code></pre>
 <pre><code>## [1] 6
 ## [1] &quot;has_copd_disease&quot; &quot;COPD&quot;            
-## [1] &quot;Number of cases: 1972&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1599&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1972&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1599&quot;</code></pre>
+## [1] &quot;Number of cases: 2878&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1656&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2878&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1656&quot;</code></pre>
 <pre><code>## [1] 7
 ## [1] &quot;has_diabetes_mellitus_disease&quot; &quot;diabetes&quot;                     
-## [1] &quot;Number of cases: 316&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2267&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 316&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2267&quot;</code></pre>
+## [1] &quot;Number of cases: 493&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2389&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 493&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2389&quot;</code></pre>
 <pre><code>## [1] 8
 ## [1] &quot;has_hypertension_disease&quot; &quot;hypertension&quot;            
-## [1] &quot;Number of cases: 2110&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 4596&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 2110&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 4596&quot;</code></pre>
+## [1] &quot;Number of cases: 3637&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4806&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3637&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 4806&quot;</code></pre>
 <pre><code>## [1] 9
 ## [1] &quot;has_sepsis&quot; &quot;sepsis&quot;    
-## [1] &quot;Number of cases: 1809&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1292&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1809&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 1292&quot;</code></pre>
+## [1] &quot;Number of cases: 2750&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1327&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2750&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 1327&quot;</code></pre>
 <pre><code>## [1] 10
 ## [1] &quot;has_stroke_disease&quot; &quot;stroke&quot;            
-## [1] &quot;Number of cases: 379&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 361&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 379&quot;</code></pre>
-<pre><code>## [1] &quot;Number of cases: 361&quot;</code></pre>
+## [1] &quot;Number of cases: 597&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 372&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 597&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 372&quot;</code></pre>
+<pre><code>## [1] 11
+## [1] &quot;has_ischemic_heart_disease&quot; &quot;ischemic heart disease&quot;    
+## [1] &quot;Number of cases: 2075&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3701&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 2075&quot;</code></pre>
+<pre><code>## [1] &quot;Number of cases: 3701&quot;</code></pre>
+<p>Let us also determine the number of cases in the whole dataset.</p>
+<pre class="r"><code>summary(pat_eICU[pat_eICU$icustay_id %in% IDs_eICU, mat[,1]])</code></pre>
+<pre><code>##  has_atrial_fibrillation_disease has_cancer_disease    CHF         
+##  Mode :logical                   Mode :logical      Mode :logical  
+##  FALSE:92467                     FALSE:101667       FALSE:98816    
+##  TRUE :14458                     TRUE :5258         TRUE :8109     
+##  NA's :5830                      NA's :5830         NA's :5830     
+##     CKD          has_chronic_liver_disease has_copd_disease
+##  Mode :logical   Mode :logical             Mode :logical   
+##  FALSE:99440     FALSE:105851              FALSE:98436     
+##  TRUE :7485      TRUE :1074                TRUE :8489      
+##  NA's :5830      NA's :5830                NA's :5830      
+##  has_diabetes_mellitus_disease has_hypertension_disease has_sepsis     
+##  Mode :logical                 Mode :logical            Mode :logical  
+##  FALSE:103319                  FALSE:91738              FALSE:98477    
+##  TRUE :3606                    TRUE :15187              TRUE :8448     
+##  NA's :5830                    NA's :5830               NA's :5830     
+##  has_stroke_disease has_ischemic_heart_disease
+##  Mode :logical      Mode :logical             
+##  FALSE:104183       FALSE:97554               
+##  TRUE :2742         TRUE :9371                
+##  NA's :5830         NA's :5830</code></pre>
+<pre class="r"><code>summary(pat_MIMIC[pat_MIMIC$icustay_id %in% IDs_MIMIC, mat[,1]])</code></pre>
+<pre><code>##  has_atrial_fibrillation_disease has_cancer_disease    CHF         
+##  Mode :logical                   Mode :logical      Mode :logical  
+##  FALSE:11221                     FALSE:16065        FALSE:13602    
+##  TRUE :6884                      TRUE :2040         TRUE :4503     
+##     CKD          has_chronic_liver_disease has_copd_disease
+##  Mode :logical   Mode :logical             Mode :logical   
+##  FALSE:16384     FALSE:17163               FALSE:14960     
+##  TRUE :1721      TRUE :942                 TRUE :3145      
+##  has_diabetes_mellitus_disease has_hypertension_disease has_sepsis     
+##  Mode :logical                 Mode :logical            Mode :logical  
+##  FALSE:13162                   FALSE:7754               FALSE:16194    
+##  TRUE :4943                    TRUE :10351              TRUE :1911     
+##  has_stroke_disease has_ischemic_heart_disease
+##  Mode :logical      Mode :logical             
+##  FALSE:17580        FALSE:9996                
+##  TRUE :525          TRUE :8109</code></pre>
 </div>
 <div id="histograms-of-proportions" class="section level3">
 <h3>Histograms of proportions</h3>
-<pre class="r"><code>pdf(file = &quot;Figures/hist_v2.pdf&quot;, width = plot_width,
+<pre class="r"><code>pdf(file = &quot;Figures/hist_v4.pdf&quot;, width = plot_width,
     height = 6, pointsize = point_size, family = font)
 
 par(mfcol = c(2,2), cex = 1)
@@ -1782,6 +2025,561 @@ hist(pat_MIMIC_subset$prop, breaks = brks, main = &quot;MIMIC&quot;, xlab = xlab
 fig_label(&quot;B&quot;)
 hist(pat_MIMIC_subset$propAbove, breaks = brks, xlab= xlab2, main = &quot;&quot;)
 fig_label(&quot;D&quot;)
+
+dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Let us investigate the correlation between <code>median</code> and <code>vent_duration</code>.</p>
+<pre class="r"><code>pdf(file = &quot;Figures/vent_duration_confounding_v4.pdf&quot;, width = plot_width,
+    height = 6, pointsize = point_size, family = font)
+
+par(mfcol = c(2,2), cex = 1)
+
+pat_MIMIC_subset$median_round &lt;- round(pat_MIMIC_subset$median)
+pat_MIMIC_subset$median_round[pat_MIMIC_subset$median_round &lt; 92] &lt;- NA
+boxplot(vent_duration ~ median_round, data = pat_MIMIC_subset, outline = FALSE, xlab = &quot;Median SpO2 (%)&quot;, ylab = &quot;Ventilation duration (hours)&quot;, main = &quot;MIMIC&quot;)
+
+boxplot(vent_duration ~ round(prop, digits = 1), data = pat_MIMIC_subset, outline = FALSE, xlab = expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements within 94% to 98%&quot;), ylab = &quot;Ventilation duration (hours)&quot;, main = &quot;MIMIC&quot;)
+
+
+pat_eICU_subset$median_round &lt;- round(pat_eICU_subset$median)
+pat_eICU_subset$median_round[pat_eICU_subset$median_round &lt; 92] &lt;- NA
+boxplot(vent_duration ~ median_round, data = pat_eICU_subset, outline = FALSE, xlab = &quot;Median SpO2 (%)&quot;, ylab = &quot;Ventilation duration (hours)&quot;, main = &quot;eICU&quot;)
+
+boxplot(vent_duration ~ round(prop, digits = 1), data = pat_eICU_subset, outline = FALSE, xlab = expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements within 94% to 98%&quot;), ylab = &quot;Ventilation duration (hours)&quot;, main = &quot;eICU&quot;)
+
+dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
+<p>Let us conduct <a href="doi.org/10.1093/aje/kwq472">G computation</a> to obtain an average treatment effect (ATE), as a causal inference result.</p>
+<pre class="r"><code># Grid of `prop` values
+grid &lt;- seq(from = 0, to = 1, by = .1)
+grid_size &lt;- length(grid)
+
+ATE &lt;- numeric(grid_size)
+tmp_df &lt;- pat_MIMIC_subset
+
+for(i in 1:grid_size) {
+  tmp_df$prop &lt;- grid[i]
+  ATE[i] &lt;- mean(predict(gamfitProp_MIMIC, newdata = tmp_df, type = &quot;response&quot;))
+}
+
+# Number of bootstrap samples to obtain the standard error (SE) of the ATE.
+n_boot &lt;- 100
+
+# Vector to store the bootstrap samples
+ATE_tmp &lt;- matrix(NA_real_, nrow = grid_size, ncol = n_boot)
+ATE_SE &lt;- numeric(grid_size)
+
+set.seed(20190409)
+pb &lt;- txtProgressBar(max = n_boot, style = 3)</code></pre>
+<pre><code>## 
+  |                                                                       
+  |                                                                 |   0%</code></pre>
+<pre class="r"><code>for(j in 1:n_boot) {
+  tmp_df &lt;- pat_MIMIC_subset[sample(1:nrow(pat_MIMIC_subset), replace = TRUE), ]
+  gamfit_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = tmp_df, family = binomial)
+  
+  for(i in 1:grid_size) {
+    tmp_df$prop &lt;- grid[i]
+    ATE_tmp[i,j] &lt;- mean(predict(gamfit_tmp, newdata = tmp_df, type = &quot;response&quot;))
+  }
+  
+  setTxtProgressBar(pb, j)
+}</code></pre>
+<pre><code>## 
+  |                                                                       
+  |=                                                                |   1%
+  |                                                                       
+  |=                                                                |   2%
+  |                                                                       
+  |==                                                               |   3%
+  |                                                                       
+  |===                                                              |   4%
+  |                                                                       
+  |===                                                              |   5%
+  |                                                                       
+  |====                                                             |   6%
+  |                                                                       
+  |=====                                                            |   7%
+  |                                                                       
+  |=====                                                            |   8%
+  |                                                                       
+  |======                                                           |   9%
+  |                                                                       
+  |======                                                           |  10%
+  |                                                                       
+  |=======                                                          |  11%
+  |                                                                       
+  |========                                                         |  12%
+  |                                                                       
+  |========                                                         |  13%
+  |                                                                       
+  |=========                                                        |  14%
+  |                                                                       
+  |==========                                                       |  15%
+  |                                                                       
+  |==========                                                       |  16%
+  |                                                                       
+  |===========                                                      |  17%
+  |                                                                       
+  |============                                                     |  18%
+  |                                                                       
+  |============                                                     |  19%
+  |                                                                       
+  |=============                                                    |  20%
+  |                                                                       
+  |==============                                                   |  21%
+  |                                                                       
+  |==============                                                   |  22%
+  |                                                                       
+  |===============                                                  |  23%
+  |                                                                       
+  |================                                                 |  24%
+  |                                                                       
+  |================                                                 |  25%
+  |                                                                       
+  |=================                                                |  26%
+  |                                                                       
+  |==================                                               |  27%
+  |                                                                       
+  |==================                                               |  28%
+  |                                                                       
+  |===================                                              |  29%
+  |                                                                       
+  |====================                                             |  30%
+  |                                                                       
+  |====================                                             |  31%
+  |                                                                       
+  |=====================                                            |  32%
+  |                                                                       
+  |=====================                                            |  33%
+  |                                                                       
+  |======================                                           |  34%
+  |                                                                       
+  |=======================                                          |  35%
+  |                                                                       
+  |=======================                                          |  36%
+  |                                                                       
+  |========================                                         |  37%
+  |                                                                       
+  |=========================                                        |  38%
+  |                                                                       
+  |=========================                                        |  39%
+  |                                                                       
+  |==========================                                       |  40%
+  |                                                                       
+  |===========================                                      |  41%
+  |                                                                       
+  |===========================                                      |  42%
+  |                                                                       
+  |============================                                     |  43%
+  |                                                                       
+  |=============================                                    |  44%
+  |                                                                       
+  |=============================                                    |  45%
+  |                                                                       
+  |==============================                                   |  46%
+  |                                                                       
+  |===============================                                  |  47%
+  |                                                                       
+  |===============================                                  |  48%
+  |                                                                       
+  |================================                                 |  49%
+  |                                                                       
+  |================================                                 |  50%
+  |                                                                       
+  |=================================                                |  51%
+  |                                                                       
+  |==================================                               |  52%
+  |                                                                       
+  |==================================                               |  53%
+  |                                                                       
+  |===================================                              |  54%
+  |                                                                       
+  |====================================                             |  55%
+  |                                                                       
+  |====================================                             |  56%
+  |                                                                       
+  |=====================================                            |  57%
+  |                                                                       
+  |======================================                           |  58%
+  |                                                                       
+  |======================================                           |  59%
+  |                                                                       
+  |=======================================                          |  60%
+  |                                                                       
+  |========================================                         |  61%
+  |                                                                       
+  |========================================                         |  62%
+  |                                                                       
+  |=========================================                        |  63%
+  |                                                                       
+  |==========================================                       |  64%
+  |                                                                       
+  |==========================================                       |  65%
+  |                                                                       
+  |===========================================                      |  66%
+  |                                                                       
+  |============================================                     |  67%
+  |                                                                       
+  |============================================                     |  68%
+  |                                                                       
+  |=============================================                    |  69%
+  |                                                                       
+  |==============================================                   |  70%
+  |                                                                       
+  |==============================================                   |  71%
+  |                                                                       
+  |===============================================                  |  72%
+  |                                                                       
+  |===============================================                  |  73%
+  |                                                                       
+  |================================================                 |  74%
+  |                                                                       
+  |=================================================                |  75%
+  |                                                                       
+  |=================================================                |  76%
+  |                                                                       
+  |==================================================               |  77%
+  |                                                                       
+  |===================================================              |  78%
+  |                                                                       
+  |===================================================              |  79%
+  |                                                                       
+  |====================================================             |  80%
+  |                                                                       
+  |=====================================================            |  81%
+  |                                                                       
+  |=====================================================            |  82%
+  |                                                                       
+  |======================================================           |  83%
+  |                                                                       
+  |=======================================================          |  84%
+  |                                                                       
+  |=======================================================          |  85%
+  |                                                                       
+  |========================================================         |  86%
+  |                                                                       
+  |=========================================================        |  87%
+  |                                                                       
+  |=========================================================        |  88%
+  |                                                                       
+  |==========================================================       |  89%
+  |                                                                       
+  |==========================================================       |  90%
+  |                                                                       
+  |===========================================================      |  91%
+  |                                                                       
+  |============================================================     |  92%
+  |                                                                       
+  |============================================================     |  93%
+  |                                                                       
+  |=============================================================    |  94%
+  |                                                                       
+  |==============================================================   |  95%
+  |                                                                       
+  |==============================================================   |  96%
+  |                                                                       
+  |===============================================================  |  97%
+  |                                                                       
+  |================================================================ |  98%
+  |                                                                       
+  |================================================================ |  99%
+  |                                                                       
+  |=================================================================| 100%</code></pre>
+<pre class="r"><code>close(pb)</code></pre>
+<pre class="r"><code>for(i in 1:grid_size) ATE_SE[i] &lt;- sd(ATE_tmp[i,])
+
+ATE_MIMIC &lt;- ATE
+ATE_SE_MIMIC &lt;- ATE_SE</code></pre>
+<pre class="r"><code>ATE &lt;- numeric(grid_size)
+tmp_df &lt;- pat_eICU_subset
+
+gamfit_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = pat_eICU_subset, family = binomial)
+
+for(i in 1:grid_size) {
+  tmp_df$prop &lt;- grid[i]
+  ATE[i] &lt;- mean(predict(gamfit_tmp, newdata = tmp_df, type = &quot;response&quot;))
+}
+
+# Number of bootstrap samples to obtain the standard error (SE) of the ATE.
+n_boot &lt;- 100
+
+# Vector to store the bootstrap samples
+ATE_tmp &lt;- matrix(NA_real_, nrow = grid_size, ncol = n_boot)
+ATE_SE &lt;- numeric(grid_size)
+
+set.seed(20190409)
+pb &lt;- txtProgressBar(max = n_boot, style = 3)</code></pre>
+<pre><code>## 
+  |                                                                       
+  |                                                                 |   0%</code></pre>
+<pre class="r"><code>for(j in 1:n_boot) {
+  tmp_df &lt;- pat_eICU_subset[sample(1:nrow(pat_eICU_subset), replace = TRUE), ]
+  gamfit_tmp &lt;- gam(mortality_in_Hospt ~ s(prop)+gender+s(age)+s(bmi)+s(sofatotal)+s(vent_duration), data = tmp_df, family = binomial)
+  
+  for(i in 1:grid_size) {
+    tmp_df$prop &lt;- grid[i]
+    ATE_tmp[i,j] &lt;- mean(predict(gamfit_tmp, newdata = tmp_df, type = &quot;response&quot;))
+  }
+  
+  setTxtProgressBar(pb, j)
+}</code></pre>
+<pre><code>## 
+  |                                                                       
+  |=                                                                |   1%
+  |                                                                       
+  |=                                                                |   2%
+  |                                                                       
+  |==                                                               |   3%
+  |                                                                       
+  |===                                                              |   4%
+  |                                                                       
+  |===                                                              |   5%
+  |                                                                       
+  |====                                                             |   6%
+  |                                                                       
+  |=====                                                            |   7%
+  |                                                                       
+  |=====                                                            |   8%
+  |                                                                       
+  |======                                                           |   9%
+  |                                                                       
+  |======                                                           |  10%
+  |                                                                       
+  |=======                                                          |  11%
+  |                                                                       
+  |========                                                         |  12%
+  |                                                                       
+  |========                                                         |  13%
+  |                                                                       
+  |=========                                                        |  14%
+  |                                                                       
+  |==========                                                       |  15%
+  |                                                                       
+  |==========                                                       |  16%
+  |                                                                       
+  |===========                                                      |  17%
+  |                                                                       
+  |============                                                     |  18%
+  |                                                                       
+  |============                                                     |  19%
+  |                                                                       
+  |=============                                                    |  20%
+  |                                                                       
+  |==============                                                   |  21%
+  |                                                                       
+  |==============                                                   |  22%
+  |                                                                       
+  |===============                                                  |  23%
+  |                                                                       
+  |================                                                 |  24%
+  |                                                                       
+  |================                                                 |  25%
+  |                                                                       
+  |=================                                                |  26%
+  |                                                                       
+  |==================                                               |  27%
+  |                                                                       
+  |==================                                               |  28%
+  |                                                                       
+  |===================                                              |  29%
+  |                                                                       
+  |====================                                             |  30%
+  |                                                                       
+  |====================                                             |  31%
+  |                                                                       
+  |=====================                                            |  32%
+  |                                                                       
+  |=====================                                            |  33%
+  |                                                                       
+  |======================                                           |  34%
+  |                                                                       
+  |=======================                                          |  35%
+  |                                                                       
+  |=======================                                          |  36%
+  |                                                                       
+  |========================                                         |  37%
+  |                                                                       
+  |=========================                                        |  38%
+  |                                                                       
+  |=========================                                        |  39%
+  |                                                                       
+  |==========================                                       |  40%
+  |                                                                       
+  |===========================                                      |  41%
+  |                                                                       
+  |===========================                                      |  42%
+  |                                                                       
+  |============================                                     |  43%
+  |                                                                       
+  |=============================                                    |  44%
+  |                                                                       
+  |=============================                                    |  45%
+  |                                                                       
+  |==============================                                   |  46%
+  |                                                                       
+  |===============================                                  |  47%
+  |                                                                       
+  |===============================                                  |  48%
+  |                                                                       
+  |================================                                 |  49%
+  |                                                                       
+  |================================                                 |  50%
+  |                                                                       
+  |=================================                                |  51%
+  |                                                                       
+  |==================================                               |  52%
+  |                                                                       
+  |==================================                               |  53%
+  |                                                                       
+  |===================================                              |  54%
+  |                                                                       
+  |====================================                             |  55%
+  |                                                                       
+  |====================================                             |  56%
+  |                                                                       
+  |=====================================                            |  57%
+  |                                                                       
+  |======================================                           |  58%
+  |                                                                       
+  |======================================                           |  59%
+  |                                                                       
+  |=======================================                          |  60%
+  |                                                                       
+  |========================================                         |  61%
+  |                                                                       
+  |========================================                         |  62%
+  |                                                                       
+  |=========================================                        |  63%
+  |                                                                       
+  |==========================================                       |  64%
+  |                                                                       
+  |==========================================                       |  65%
+  |                                                                       
+  |===========================================                      |  66%
+  |                                                                       
+  |============================================                     |  67%
+  |                                                                       
+  |============================================                     |  68%
+  |                                                                       
+  |=============================================                    |  69%
+  |                                                                       
+  |==============================================                   |  70%
+  |                                                                       
+  |==============================================                   |  71%
+  |                                                                       
+  |===============================================                  |  72%
+  |                                                                       
+  |===============================================                  |  73%
+  |                                                                       
+  |================================================                 |  74%
+  |                                                                       
+  |=================================================                |  75%
+  |                                                                       
+  |=================================================                |  76%
+  |                                                                       
+  |==================================================               |  77%
+  |                                                                       
+  |===================================================              |  78%
+  |                                                                       
+  |===================================================              |  79%
+  |                                                                       
+  |====================================================             |  80%
+  |                                                                       
+  |=====================================================            |  81%
+  |                                                                       
+  |=====================================================            |  82%
+  |                                                                       
+  |======================================================           |  83%
+  |                                                                       
+  |=======================================================          |  84%
+  |                                                                       
+  |=======================================================          |  85%
+  |                                                                       
+  |========================================================         |  86%
+  |                                                                       
+  |=========================================================        |  87%
+  |                                                                       
+  |=========================================================        |  88%
+  |                                                                       
+  |==========================================================       |  89%
+  |                                                                       
+  |==========================================================       |  90%
+  |                                                                       
+  |===========================================================      |  91%
+  |                                                                       
+  |============================================================     |  92%
+  |                                                                       
+  |============================================================     |  93%
+  |                                                                       
+  |=============================================================    |  94%
+  |                                                                       
+  |==============================================================   |  95%
+  |                                                                       
+  |==============================================================   |  96%
+  |                                                                       
+  |===============================================================  |  97%
+  |                                                                       
+  |================================================================ |  98%
+  |                                                                       
+  |================================================================ |  99%
+  |                                                                       
+  |=================================================================| 100%</code></pre>
+<pre class="r"><code>close(pb)</code></pre>
+<pre class="r"><code>for(i in 1:grid_size) ATE_SE[i] &lt;- sd(ATE_tmp[i,])
+
+ATE_eICU &lt;- ATE
+ATE_SE_eICU &lt;- ATE_SE</code></pre>
+<pre class="r"><code>plot_ATE &lt;- function(
+  ATE,
+  ATE_SE,
+  main = &quot;Effect of treatment regime&quot;,
+  yRange = c(0, .3),
+  add = FALSE, col = &quot;black&quot;,
+  label
+){
+  xRange = c(0, 1)
+  
+ 
+    xlab &lt;- expression(&quot;Proportion of SpO&quot;[2]*&quot; measurements within 94% to 98%&quot;)
+  
+  ylab &lt;- &quot;Probability of hospital mortality&quot; 
+  
+  if(!add) {
+    plot(1, type = 'n', xlim = xRange, ylim = yRange,
+           ylab = ylab,
+           xlab = xlab, main = main, yaxs = 'i', xaxs = 'i', yaxt = 'n', xaxt = 'n')
+      
+      att &lt;- pretty(yRange)
+    if(!isTRUE(all.equal(att, round(att, digits = 2)))) {
+      axis(2, at = att, lab = paste0(sprintf('%.1f', att*100), '%'), las = TRUE)
+    } else axis(2, at = att, lab = paste0(att*100, '%'), las = TRUE)
+      
+      att &lt;- pretty(xRange)
+      axis(1, at = att, lab = paste0(att*100, '%'), las = TRUE)
+  
+  }
+    
+   
+    lcl &lt;- ATE - 1.96*ATE_SE
+    ucl &lt;- ATE + 1.96*ATE_SE
+    
+    lines(x = grid, y = lcl, lty = 2, lwd = 2, col = col)
+    lines(x = grid, y = ucl, lty = 2, lwd = 2, col = col)
+    lines(grid, ATE, lwd = 3, col = col)
+  
+  if(!missing(label)) fig_label(label)
+}
+
+pdf(file = &quot;Figures/g-comp_v4.pdf&quot;, width = plot_width,
+    height = 3, pointsize = point_size, family = font)
+
+par(mfcol = c(1,2), cex = 1)
+
+plot_ATE(ATE_eICU, ATE_SE_eICU, main = &quot;eICU-CRD&quot;, label = &quot;A&quot;)
+plot_ATE(ATE_MIMIC, ATE_SE_MIMIC, main = &quot;MIMIC&quot;, label = &quot;B&quot;)
 
 dev.off()</code></pre>
 <pre><code>## png 

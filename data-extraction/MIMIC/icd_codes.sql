@@ -33,7 +33,7 @@ COUNT(CASE WHEN icd_presence.icd_num BETWEEN 740 AND 759 THEN 1 END) > 0 AS has_
 COUNT(CASE WHEN icd_presence.icd_num BETWEEN 760 AND 779 THEN 1 END) > 0 AS has_perinatal_disease,
 COUNT(CASE WHEN icd_presence.icd_num BETWEEN 780 AND 799 THEN 1 END) > 0 AS has_other_disease,
 COUNT(CASE WHEN icd_presence.icd_num BETWEEN 800 AND 999 THEN 1 END) > 0 AS has_injury_disease,
-COUNT(CASE WHEN icd_presence.icd_num BETWEEN 410 AND 414 THEN 1 END) > 0 AS has_isachaemic_heart_disease,
+COUNT(CASE WHEN icd_presence.icd_num BETWEEN 410 AND 414 THEN 1 END) > 0 AS has_ischemic_heart_disease,
 COUNT(CASE WHEN icd_presence.icd_num BETWEEN 427 AND 427 THEN 1 END) > 0 AS has_atrial_fibrillation_disease,
 COUNT(CASE WHEN icd_presence.icd_num BETWEEN 434 AND 434 THEN 1 END) > 0 AS has_stroke_disease,
 COUNT(CASE WHEN icd_presence.icd_num_string LIKE '%428%' THEN 1 END) > 0 AS CHF, -- Congestive heart failure

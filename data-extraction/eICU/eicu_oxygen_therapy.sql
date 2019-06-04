@@ -17,10 +17,12 @@ WITH respchart AS (
 -- Extract the type of oxygen therapy.
 -- The categories are invasive ventilation,
 -- noninvasive ventilation, and supplemental oxygen.
+-- `oxygen_therapy_type = -1` indicates oxygen therapy,
+-- i.e. more oxygen than in room air is administered.
 , ventsettings0 AS (
 	SELECT patientunitstayid AS icustay_id
 		, charttime
-		, MAX(CASE
+		, CASE
 
 			-- Invasive ventilation
 			WHEN
@@ -145,17 +147,24 @@ WITH respchart AS (
 					'rr spont',
 					'ps',
 					'insp cycle off (%)',
-					'lpm o2',
 					'trach mask/collar'
 				)
 				OR string LIKE '%spontaneous%'
 				OR string LIKE '%oxygen therapy%'
 			THEN 0
 
+			-- Supplemental oxygen therapy,
+			-- i.e. more oxygen than in room air is administered.
+			WHEN
+				string IN (
+					'lpm o2'
+				)
+			THEN -1
+
 			ELSE NULL
 
-		END) AS oxygen_therapy_type
-		, MAX(activeUponDischarge) AS activeUponDischarge
+		END AS oxygen_therapy_type
+		, activeUponDischarge
 	FROM (
 
 		SELECT patientunitstayid
@@ -197,14 +206,13 @@ WITH respchart AS (
 		FROM `oxygenators-209612.eicu.treatment`
 	)
 	WHERE charttime >= -60
-	GROUP BY icustay_id, charttime
 
 	UNION ALL
 
 	-- The following indicates oxygen therapy but unclear what type.
 	SELECT patientunitstayid AS icustay_id
 		, nursingchartoffset AS charttime
-		, 0 AS oxygen_therapy_type
+		, -1 AS oxygen_therapy_type
 		, NULL AS activeUponDischarge
 	FROM nursechart
 	WHERE nursingchartoffset >= -60
@@ -218,18 +226,22 @@ WITH respchart AS (
 	-- indicates oxygen therapy.
 	SELECT patientunitstayid AS icustay_id
 		, respchartoffset AS charttime
-		, 0 AS oxygen_therapy_type
+		, CASE
+			WHEN SAFE_CAST(respchartvalue AS FLOAT64) <= 1 AND SAFE_CAST(respchartvalue AS FLOAT64) > .22 THEN -1
+			WHEN SAFE_CAST(respchartvalue AS FLOAT64) > 22 THEN -1
+			ELSE 0
+		END AS oxygen_therapy_type
 		, NULL AS activeUponDischarge
 	FROM respchart
 	WHERE respchartoffset >= -60
 		AND LOWER(respchartvaluelabel) IN ('fio2', 'fio2 (%)')
 		AND (
-			SAFE_CAST(respchartvalue as FLOAT64) < .2
+			SAFE_CAST(respchartvalue AS FLOAT64) < .2
 			OR (
-				SAFE_CAST(respchartvalue as FLOAT64) > .22
-				AND SAFE_CAST(respchartvalue as FLOAT64) < 20
+				SAFE_CAST(respchartvalue AS FLOAT64) > .22
+				AND SAFE_CAST(respchartvalue AS FLOAT64) < 20
 			)
-			OR SAFE_CAST(respchartvalue as FLOAT64) > 22
+			OR SAFE_CAST(respchartvalue AS FLOAT64) > 22
 		)
 )
 
@@ -240,6 +252,7 @@ WITH respchart AS (
 		, charttime
 		, MAX(oxygen_therapy_type) AS oxygen_therapy_type
 		, MAX(activeUponDischarge) AS activeUponDischarge
+		, COUNT(CASE WHEN oxygen_therapy_type = -1 THEN 1 END) > 0 AS supp_oxygen
 	FROM ventsettings0
 	-- If oxygen_therapy_type is NULL,
 	-- then the record does not correspond with oxygen therapy.
@@ -264,6 +277,7 @@ WITH respchart AS (
       , charttime
       , oxygen_therapy_type
       , activeUponDischarge
+      , supp_oxygen
 
       -- If the time since the last oxygen therapy event is more than 24 hours,
 	-- we consider that ventilation had ended in between.
@@ -293,6 +307,7 @@ WITH respchart AS (
 , vd3 AS
 (
 	SELECT icustay_id
+		, ventnum
 		, CASE
 			-- If activeUponDischarge, then the unit discharge time is vent_end
 			WHEN (
@@ -311,15 +326,16 @@ WITH respchart AS (
 		END AS vent_end
 		, MIN(charttime) AS vent_start
 		, MAX(oxygen_therapy_type) AS oxygen_therapy_type
+		, MAX(supp_oxygen) AS supp_oxygen
 	FROM vd2
 		LEFT JOIN pat
 		ON vd2.icustay_id = pat.patientunitstayid
-	WHERE ventnum = 1
-	GROUP BY icustay_id
+	GROUP BY icustay_id, ventnum
 )
 
 
 select vd3.*
 	-- vent_duration is in hours.
 	, (vent_end - vent_start) / 60 AS vent_duration
+	, MIN(vent_start) OVER(PARTITION BY icustay_id) AS vent_start_first
 from vd3
